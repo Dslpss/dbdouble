@@ -1,5 +1,6 @@
 // Configuração
-const API_BASE_URL = "http://localhost:3001";
+// Em produção (quando servido pelo mesmo host), usar '' para chamadas relativas
+const API_BASE_URL = (window && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) ? 'http://localhost:3001' : '';
 let eventSource = null;
 let results = [];
 let stats = {
