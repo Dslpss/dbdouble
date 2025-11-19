@@ -30,6 +30,8 @@ const AUTO_SCROLL_ON_SIGNAL = true;
 let lastScrolledSignalId = null;
 // histórico curto de resoluções recentes para evitar dupla contagem (por cor/outcome)
 let recentResolutions = []; // { id, color, outcome, ts }
+// Histórico de resoluções de sinais para cálculo de sequências win/loss
+let signalOutcomeHistory = []; // { outcome: 'win'|'loss', ts }
 const RESOLUTION_DEDUP_WINDOW_MS = 8000; // 8 segundos
 
 // Inicialização
@@ -215,6 +217,14 @@ function updateHistoryWithOutcome(
       ts: resolvedAt || Date.now(),
     });
   } catch (e) {}
+  // registrar também no histórico de resultados de sinal (para sequências win/loss)
+  try {
+    addSignalOutcome(outcome);
+  } catch (e) {}
+  // Atualizar o simulador martingale (agora com os dados do wins/losses)
+  try {
+    if (typeof updateMartingaleUI === "function") updateMartingaleUI();
+  } catch (e) {}
   // Garantir que qualquer sinal pendente com esse id seja removido
   for (let p of pendingSignals) {
     if (p.id === signalUiId) {
@@ -284,6 +294,27 @@ function registerResolution(entry) {
   } catch (e) {}
 }
 
+function addSignalOutcome(outcome) {
+  try {
+    const o = (outcome || "").toLowerCase();
+    if (o !== "win" && o !== "loss") return;
+    signalOutcomeHistory.unshift({ outcome: o, ts: Date.now() });
+    // manter histórico de 100 últimas resoluções
+    if (signalOutcomeHistory.length > 100) {
+      signalOutcomeHistory = signalOutcomeHistory.slice(0, 100);
+    }
+  } catch (e) {}
+}
+
+function getConsecutiveSignalLosses() {
+  let count = 0;
+  for (let i = 0; i < signalOutcomeHistory.length; i++) {
+    if (signalOutcomeHistory[i].outcome === "loss") count++;
+    else break; // parada ao encontrar um win
+  }
+  return count;
+}
+
 // Profit simulator UI updates
 function formatCurrency(value) {
   try {
@@ -322,6 +353,130 @@ function updateProfitCard() {
   if (roiEl)
     roiEl.textContent =
       total === 0 || bet === 0 ? "-" : `${formatCurrency(roi)}%`;
+  // Also refresh martingale UI if present
+  try {
+    if (typeof updateMartingaleUI === "function") updateMartingaleUI();
+  } catch (e) {}
+}
+
+// MARTINGALE: calculate sequence, cumulative losses, next bet and capital needed
+function calculateMartingaleSequence(initial, losses) {
+  const n = Math.max(1, Math.floor(Number(losses) || 1));
+  const inc = Number(initial) || 0;
+  const seq = [];
+  let cur = inc;
+  for (let i = 0; i < n; i++) {
+    seq.push(cur);
+    cur = cur * 2;
+  }
+  return seq;
+}
+
+function calculateCumulativeLoss(initial, losses) {
+  const seq = calculateMartingaleSequence(initial, losses);
+  return seq.reduce((a, b) => a + b, 0);
+}
+
+function calculateNextBet(initial, losses) {
+  const n = Math.max(1, Math.floor(Number(losses) || 1));
+  const inc = Number(initial) || 0;
+  return inc * Math.pow(2, n);
+}
+
+function calculateCapitalNeeded(initial, losses) {
+  // capital needed includes the future next bet too
+  const cumulative = calculateCumulativeLoss(initial, losses);
+  const nextBet = calculateNextBet(initial, losses);
+  return cumulative + nextBet;
+}
+
+// Ajusta a banca com base no outcome e attemptsUsed (Martingale)
+function adjustBankrollOnOutcome(outcome, attemptsUsed) {
+  try {
+    const betEl = document.getElementById("profitBetAmount");
+    const bankEl = document.getElementById("profitBankroll");
+    if (!betEl || !bankEl) return;
+    const initial = Number(betEl.value) || 0;
+    let bank = Number(bankEl.value) || 0;
+    // Normalizar outcome
+    const out = (outcome || "").toLowerCase();
+    if (out === "win") {
+      // ganho padrão: recuperar perdas + lucro de 1x aposta inicial => adicionar initial
+      bank = bank + initial;
+    } else if (out === "loss") {
+      const n = Math.max(1, Math.floor(Number(attemptsUsed) || 1));
+      const losses = calculateCumulativeLoss(initial, n);
+      bank = bank - losses;
+    } else {
+      return; // ignorar outcomes desconhecidos
+    }
+    // Atualizar DOM e persistir
+    bankEl.value = Number(bank).toFixed(2);
+    try {
+      localStorage.setItem("profitBankroll", bankEl.value);
+    } catch (e) {}
+    // Atualizar UI de martingale/coverage
+    try {
+      updateMartingaleUI();
+    } catch (e) {}
+    // highlight visual
+    try {
+      bankEl.classList.add("bank-changed");
+      setTimeout(() => bankEl.classList.remove("bank-changed"), 800);
+    } catch (e) {}
+  } catch (e) {}
+}
+
+function updateMartingaleUI() {
+  const betEl = document.getElementById("profitBetAmount");
+  const streakEl = document.getElementById("martingaleStreak");
+  const sequenceEl = document.getElementById("martingaleSequence");
+  const cumulativeEl = document.getElementById("martingaleCumulativeLoss");
+  const nextEl = document.getElementById("martingaleNextBet");
+  const capitalEl = document.getElementById("martingaleCapitalNeeded");
+  if (!betEl || !streakEl) return;
+  const bet = Number(betEl.value) || 0;
+  const useWL = document.getElementById("useWinsLosses");
+  let losses = Math.max(1, Math.floor(Number(streakEl.value) || 1));
+  if (useWL && useWL.checked) {
+    // use consecutive signal losses (if any), else fallback to manual input
+    const consecutive = getConsecutiveSignalLosses();
+    if (consecutive > 0) {
+      losses = consecutive;
+    }
+  }
+  const seq = calculateMartingaleSequence(bet, losses);
+  const seqText = seq.map((v) => `R$ ${formatCurrency(v)}`).join(" + ");
+  const cumulative = calculateCumulativeLoss(bet, losses);
+  const nextBet = calculateNextBet(bet, losses);
+  const capitalNeeded = calculateCapitalNeeded(bet, losses);
+  if (sequenceEl) sequenceEl.textContent = seqText === "" ? "-" : seqText;
+  if (cumulativeEl) cumulativeEl.textContent = `R$ ${formatCurrency(cumulative)}`;
+  if (nextEl) nextEl.textContent = `R$ ${formatCurrency(nextBet)}`;
+  if (capitalEl)
+    capitalEl.textContent = `R$ ${formatCurrency(capitalNeeded)}`;
+  // Bankroll coverage
+  const bankrollEl = document.getElementById("profitBankroll");
+  const coverageEl = document.getElementById("martingaleCoverage");
+  if (bankrollEl && coverageEl) {
+    const bankroll = Number(bankrollEl.value) || 0;
+    if (bankroll <= 0) {
+      coverageEl.textContent = "Banca não informada";
+      coverageEl.className = "bankroll-status";
+    } else {
+      const ratio = bankroll / capitalNeeded;
+      const percent = Math.round(ratio * 100);
+      coverageEl.textContent = `${percent}% cobertura`;
+      coverageEl.className = `bankroll-status ${
+        ratio >= 1 ? "bankroll-ok" : "bankroll-warning"
+      }`;
+    }
+  }
+  // exibir a contagem atual de perdas consecutivas de sinal
+  try {
+    const streakElDom = document.getElementById("currentSignalLossStreak");
+    if (streakElDom) streakElDom.textContent = String(getConsecutiveSignalLosses());
+  } catch (e) {}
 }
 
 // Bind event to bet input
@@ -332,6 +487,48 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   // initial update
   updateProfitCard();
+  // bind martingale input if present
+  const mgStreak = document.getElementById("martingaleStreak");
+  if (mgStreak) {
+    mgStreak.addEventListener("input", () => updateMartingaleUI());
+    mgStreak.addEventListener("input", () => {
+      try {
+        localStorage.setItem("martingaleStreak", mgStreak.value);
+      } catch (e) {}
+    });
+  }
+  if (betInput) {
+    betInput.addEventListener("input", () => updateMartingaleUI());
+  }
+  const bankrollInput = document.getElementById("profitBankroll");
+  if (bankrollInput) {
+    bankrollInput.addEventListener("input", () => updateMartingaleUI());
+    bankrollInput.addEventListener("input", () => {
+      try {
+        localStorage.setItem("profitBankroll", bankrollInput.value);
+      } catch (e) {}
+    });
+  }
+  const useWL = document.getElementById("useWinsLosses");
+  if (useWL) {
+    useWL.addEventListener("input", () => updateMartingaleUI());
+    useWL.addEventListener("input", () => {
+      try {
+        localStorage.setItem("useWinsLosses", useWL.checked ? "1" : "0");
+      } catch (e) {}
+    });
+  }
+  // initial martingale update
+  updateMartingaleUI();
+  // restore persisted inputs
+  try {
+    const savedBankroll = localStorage.getItem("profitBankroll");
+    if (savedBankroll && bankrollInput) bankrollInput.value = savedBankroll;
+    const savedStreak = localStorage.getItem("martingaleStreak");
+    if (savedStreak && mgStreak) mgStreak.value = savedStreak;
+    const savedUse = localStorage.getItem("useWinsLosses");
+    if (savedUse && useWL) useWL.checked = savedUse === "1";
+  } catch (e) {}
 });
 
 // Debug helpers: add counts manually from UI
@@ -418,6 +615,10 @@ function updateWinLossCounts(outcome, signalId, resolvedAt = null) {
   // Atualizar profit card caso esteja visível
   try {
     if (typeof updateProfitCard === "function") updateProfitCard();
+  } catch (e) {}
+  // Ajustar a banca com base no outcome / tentativas
+  try {
+    adjustBankrollOnOutcome(outcome, attemptsUsed);
   } catch (e) {}
 }
 
@@ -626,7 +827,6 @@ function handleBackendSignal(signalData) {
     return;
   }
   const signal = {
-    id: signalData.id || null, // Preservar id do backend para sincronização
     type: signalData.type || "MEDIUM_SIGNAL",
     confidence: signalData.confidence || 7.0,
     description: signalData.description || "Padrão detectado",

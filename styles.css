@@ -603,13 +603,16 @@ body {
 }
 .profit-card {
   background: var(--bg-card);
-  padding: 18px;
+  padding: 20px;
   border-radius: 12px;
   border: 1px solid var(--border-color);
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  gap: 16px;
   align-items: start;
+  font-size: 1rem;
+  width: 100%;
+  max-width: 100%;
 }
 .profit-input {
   display: flex;
@@ -624,6 +627,75 @@ body {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
+
+.martingale-simulator {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.martingale-row {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+}
+.martingale-row label {
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.martingale-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+.martingale-row #currentSignalLossStreak {
+  color: var(--accent-red);
+  font-weight: 800;
+}
+.bank-changed {
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  transform: scale(1.02);
+}
+.martingale-row input {
+  width: 100px;
+  padding: 6px;
+  font-size: 0.9rem;
+}
+.martingale-row input#profitBankroll {
+  width: 110px; /* larger to allow more digits */
+}
+.bankroll-status {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.bankroll-ok {
+  background: rgba(0, 255, 136, 0.08);
+  color: var(--accent-green);
+  border: 1px solid rgba(0, 255, 136, 0.12);
+}
+.bankroll-warning {
+  background: rgba(255, 68, 68, 0.06);
+  color: var(--accent-red);
+  border: 1px solid rgba(255, 68, 68, 0.12);
+}
+.martingale-results {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+}
+.martingale-results span {
+  color: var(--text-secondary);
+}
+.martingale-results span:last-child {
+  color: var(--text-primary);
+  font-weight: 700;
+}
 .profit-results {
   display: flex;
   flex-direction: column;
@@ -637,6 +709,10 @@ body {
 .profit-row span:last-child {
   color: var(--text-primary);
   font-weight: 700;
+}
+/* smaller text for a more compact card */
+.profit-row span {
+  font-size: 0.9rem;
 }
 
 @media (max-width: 600px) {
@@ -1026,5 +1102,3 @@ body {
     font-size: 2rem;
   }
 }
-
-

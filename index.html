@@ -163,6 +163,28 @@
               step="0.01"
               value="10" />
           </div>
+          <div class="martingale-simulator">
+            <div class="martingale-row">
+              <label for="martingaleStreak"><strong>Perdas consecutivas:</strong></label>
+              <input id="martingaleStreak" type="number" min="1" max="10" value="3" />
+            </div>
+            <div class="martingale-row">
+              <label for="useWinsLosses" title="Use as resoluções reais (WIN/LOSS) para calcular perda acumulada e próxima aposta"><strong>Baseado em Wins/Losses:</strong></label>
+              <input id="useWinsLosses" type="checkbox" checked />
+            </div>
+            <div class="martingale-row">
+              <label for="profitBankroll"><strong>Minha banca:</strong></label>
+              <input id="profitBankroll" type="number" min="0" step="0.01" value="1000" />
+            </div>
+            <div class="martingale-results">
+              <div class="martingale-row"><span>Sequência:</span> <span id="martingaleSequence">-</span></div>
+              <div class="martingale-row"><span>Perda acumulada:</span> <span id="martingaleCumulativeLoss">-</span></div>
+              <div class="martingale-row"><span>Próxima aposta:</span> <span id="martingaleNextBet">-</span></div>
+              <div class="martingale-row"><span>Capital necessário:</span> <span id="martingaleCapitalNeeded">-</span></div>
+              <div class="martingale-row"><span>Cobertura da banca:</span> <span id="martingaleCoverage" class="bankroll-status">-</span></div>
+              <div class="martingale-row"><span>Perdas de sinal consecutivas:</span> <span id="currentSignalLossStreak">0</span></div>
+            </div>
+          </div>
           <div class="profit-results" id="profitResults">
             <div class="profit-row">
               <span>Total de Apostas:</span> <span id="profitTotalBets">0</span>
@@ -199,5 +221,3 @@
     <script src="app.js?v=2"></script>
   </body>
 </html>
-
-
