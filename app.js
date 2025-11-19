@@ -134,6 +134,16 @@ async function showUserInfo() {
         userEmail.textContent = userData.email;
         userBankroll.textContent = `R$ ${bankroll.toFixed(2)}`;
         userInfo.style.display = "flex";
+
+        // Mostrar botão admin se usuário for admin
+        if (userData.is_admin) {
+          const adminBtn = document.createElement("button");
+          adminBtn.id = "btnAdmin";
+          adminBtn.className = "admin-btn";
+          adminBtn.textContent = "Admin";
+          adminBtn.onclick = () => (window.location.href = "/admin");
+          userInfo.appendChild(adminBtn);
+        }
       }
     }
   } catch (error) {
@@ -1458,3 +1468,87 @@ setInterval(async () => {
     updateConnectionStatus(false);
   }
 }, 5000);
+
+// Configurações de Alertas
+document.getElementById("btnSettings").addEventListener("click", () => {
+  loadUserPreferences();
+  document.getElementById("settingsModal").style.display = "block";
+});
+
+document.getElementById("closeSettings").addEventListener("click", () => {
+  document.getElementById("settingsModal").style.display = "none";
+});
+
+document
+  .getElementById("settingsForm")
+  .addEventListener("submit", async (e) => {
+    e.preventDefault();
+    await saveUserPreferences();
+  });
+
+async function loadUserPreferences() {
+  try {
+    const token = localStorage.getItem("token");
+    const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const user = await response.json();
+
+    document.getElementById("receiveAlerts").checked = user.receive_alerts;
+    document.getElementById("colorRed").checked =
+      user.enabled_colors.includes("red");
+    document.getElementById("colorBlack").checked =
+      user.enabled_colors.includes("black");
+    document.getElementById("colorWhite").checked =
+      user.enabled_colors.includes("white");
+    document.getElementById("enabledPatterns").value =
+      user.enabled_patterns.join(", ");
+  } catch (error) {
+    console.error("Erro ao carregar preferências:", error);
+  }
+}
+
+async function saveUserPreferences() {
+  try {
+    const token = localStorage.getItem("token");
+    const enabledColors = [];
+    if (document.getElementById("colorRed").checked) enabledColors.push("red");
+    if (document.getElementById("colorBlack").checked)
+      enabledColors.push("black");
+    if (document.getElementById("colorWhite").checked)
+      enabledColors.push("white");
+
+    const enabledPatterns = document
+      .getElementById("enabledPatterns")
+      .value.split(",")
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+
+    const preferences = {
+      receive_alerts: document.getElementById("receiveAlerts").checked,
+      enabled_colors: enabledColors,
+      enabled_patterns: enabledPatterns,
+    };
+
+    const response = await fetch(`${API_BASE_URL}/api/auth/preferences`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(preferences),
+    });
+
+    if (response.ok) {
+      alert("Preferências salvas com sucesso!");
+      document.getElementById("settingsModal").style.display = "none";
+      // Reconnect SSE with new preferences
+      connectSSE();
+    } else {
+      alert("Erro ao salvar preferências");
+    }
+  } catch (error) {
+    console.error("Erro ao salvar preferências:", error);
+    alert("Erro ao salvar preferências");
+  }
+}

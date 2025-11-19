@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Panel - DBcolor</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .admin-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+
+      .admin-header {
+        text-align: center;
+        margin-bottom: 30px;
+      }
+
+      .admin-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+      }
+
+      .admin-stat-card {
+        background: var(--bg-card);
+        padding: 25px;
+        border-radius: 15px;
+        text-align: center;
+        border: 1px solid var(--border-color);
+        box-shadow: var(--shadow);
+      }
+
+      .admin-stat-value {
+        font-size: 2rem;
+        font-weight: bold;
+        color: var(--accent-green);
+        margin-bottom: 5px;
+      }
+
+      .admin-stat-label {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+      }
+
+      .users-table {
+        background: var(--bg-card);
+        border-radius: 15px;
+        overflow: hidden;
+        border: 1px solid var(--border-color);
+        box-shadow: var(--shadow);
+      }
+
+      .users-table table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .users-table th,
+      .users-table td {
+        padding: 15px;
+        text-align: left;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .users-table th {
+        background: var(--bg-secondary);
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .users-table tr:hover {
+        background: var(--bg-hover);
+      }
+
+      .admin-actions {
+        margin-bottom: 20px;
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+      }
+
+      .btn-admin {
+        background: var(--accent-green);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: background-color 0.2s;
+      }
+
+      .btn-admin:hover {
+        background: #00cc88;
+      }
+
+      .btn-admin.secondary {
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+      }
+
+      .btn-admin.secondary:hover {
+        background: var(--bg-hover);
+      }
+
+      .loading {
+        text-align: center;
+        padding: 40px;
+        color: var(--text-secondary);
+      }
+
+      .error {
+        background: #ff4444;
+        color: white;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+
+      @media (max-width: 768px) {
+        .users-table {
+          overflow-x: auto;
+        }
+
+        .users-table table {
+          min-width: 600px;
+        }
+
+        .admin-actions {
+          flex-direction: column;
+        }
+
+        .btn-admin {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="admin-container">
+      <div class="admin-header">
+        <h1>🎯 Painel Administrativo - DBcolor</h1>
+        <p>Gerencie usuários e visualize estatísticas do sistema</p>
+      </div>
+
+      <div id="errorMessage" class="error" style="display: none"></div>
+
+      <div class="admin-actions">
+        <button id="btnRefreshStats" class="btn-admin">
+          Atualizar Estatísticas
+        </button>
+        <button id="btnRefreshUsers" class="btn-admin secondary">
+          Atualizar Usuários
+        </button>
+        <button id="btnBackToApp" class="btn-admin secondary">
+          Voltar ao App
+        </button>
+      </div>
+
+      <div class="admin-stats" id="statsContainer">
+        <div class="loading">Carregando estatísticas...</div>
+      </div>
+
+      <div class="users-table">
+        <table id="usersTable">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Username</th>
+              <th>Bankroll</th>
+              <th>Cores Habilitadas</th>
+              <th>Padrões</th>
+              <th>Alertas</th>
+              <th>Admin</th>
+              <th>Data Cadastro</th>
+            </tr>
+          </thead>
+          <tbody id="usersTableBody">
+            <tr>
+              <td colspan="8" class="loading">Carregando usuários...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      const API_BASE_URL =
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1"
+          ? "http://localhost:3001"
+          : "";
+
+      // Check if user is admin
+      async function checkAdminAccess() {
+        try {
+          const token = localStorage.getItem("token");
+          if (!token) {
+            window.location.href = "/auth";
+            return;
+          }
+
+          const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          if (!response.ok) {
+            throw new Error("Não autorizado");
+          }
+
+          const user = await response.json();
+          if (!user.is_admin) {
+            showError(
+              "Acesso negado - apenas administradores podem acessar esta página"
+            );
+            setTimeout(() => (window.location.href = "/"), 3000);
+            return;
+          }
+
+          // Load data
+          loadStats();
+          loadUsers();
+        } catch (error) {
+          console.error("Erro ao verificar acesso:", error);
+          window.location.href = "/auth";
+        }
+      }
+
+      async function loadStats() {
+        try {
+          const token = localStorage.getItem("token");
+          const response = await fetch(`${API_BASE_URL}/api/auth/admin/stats`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          if (!response.ok) throw new Error("Erro ao carregar estatísticas");
+
+          const data = await response.json();
+          displayStats(data);
+        } catch (error) {
+          console.error("Erro ao carregar estatísticas:", error);
+          showError("Erro ao carregar estatísticas");
+        }
+      }
+
+      async function loadUsers() {
+        try {
+          const token = localStorage.getItem("token");
+          const response = await fetch(`${API_BASE_URL}/api/auth/admin/users`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          if (!response.ok) throw new Error("Erro ao carregar usuários");
+
+          const data = await response.json();
+          displayUsers(data.users);
+        } catch (error) {
+          console.error("Erro ao carregar usuários:", error);
+          showError("Erro ao carregar usuários");
+        }
+      }
+
+      function displayStats(stats) {
+        const container = document.getElementById("statsContainer");
+        container.innerHTML = `
+          <div class="admin-stat-card">
+            <div class="admin-stat-value">${stats.total_users}</div>
+            <div class="admin-stat-label">Total de Usuários</div>
+          </div>
+          <div class="admin-stat-card">
+            <div class="admin-stat-value">R$ ${stats.total_bankroll.toFixed(
+              2
+            )}</div>
+            <div class="admin-stat-label">Bankroll Total</div>
+          </div>
+          <div class="admin-stat-card">
+            <div class="admin-stat-value">${stats.database_name}</div>
+            <div class="admin-stat-label">Banco de Dados</div>
+          </div>
+        `;
+      }
+
+      function displayUsers(users) {
+        const tbody = document.getElementById("usersTableBody");
+
+        if (users.length === 0) {
+          tbody.innerHTML =
+            '<tr><td colspan="8" style="text-align: center;">Nenhum usuário encontrado</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = users
+          .map(
+            (user) => `
+          <tr>
+            <td>${user.email}</td>
+            <td>${user.username || "-"}</td>
+            <td>R$ ${parseFloat(user.bankroll || 0).toFixed(2)}</td>
+            <td>${(user.enabled_colors || []).join(", ")}</td>
+            <td>${
+              (user.enabled_patterns || []).length > 0
+                ? user.enabled_patterns.join(", ")
+                : "Todos"
+            }</td>
+            <td>${user.receive_alerts ? "Sim" : "Não"}</td>
+            <td>${user.is_admin ? "Sim" : "Não"}</td>
+            <td>${
+              user.created_at
+                ? new Date(
+                    user.created_at.$date || user.created_at
+                  ).toLocaleDateString("pt-BR")
+                : "-"
+            }</td>
+          </tr>
+        `
+          )
+          .join("");
+      }
+
+      function showError(message) {
+        const errorDiv = document.getElementById("errorMessage");
+        errorDiv.textContent = message;
+        errorDiv.style.display = "block";
+        setTimeout(() => (errorDiv.style.display = "none"), 5000);
+      }
+
+      // Event listeners
+      document
+        .getElementById("btnRefreshStats")
+        .addEventListener("click", loadStats);
+      document
+        .getElementById("btnRefreshUsers")
+        .addEventListener("click", loadUsers);
+      document.getElementById("btnBackToApp").addEventListener("click", () => {
+        window.location.href = "/";
+      });
+
+      // Initialize
+      checkAdminAccess();
+    </script>
+  </body>
+</html>

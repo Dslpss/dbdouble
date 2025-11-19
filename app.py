@@ -137,6 +137,14 @@ async def auth_page():
             return HTMLResponse(content=f.read())
     return HTMLResponse("<h1>Auth page not found</h1>", status_code=404)
 
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page():
+    html_path = os.path.join(base_dir, "admin.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse("<h1>Admin page not found</h1>", status_code=404)
+
 @app.get("/app.js")
 async def app_js():
     js_path = os.path.join(base_dir, "app.js")
@@ -392,7 +400,7 @@ def on_message(data: Dict):
                             signal['id'] = pb_id
                     except Exception:
                         pb_id = None
-                    # Notificar clientes SSE com sinal (ja' com signal['id'] quando aplicavel)
+                    # Notificar clientes SSE com sinal
                     signal_payload = {"type": "signal", "data": signal}
                     signal_message = f"event: signal\ndata: {json.dumps(signal_payload)}\n\n"
                     for queue in event_clients:

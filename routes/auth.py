@@ -34,15 +34,32 @@ async def register(user: UserIn):
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email já cadastrado")
     hashed = get_password_hash(user.password)
+    
+    # Check if this is the admin email
+    is_admin = user.email == "dennisemannuel93@gmail.com"
+    
     doc = {
         "email": user.email,
         "username": user.username,
         "password_hash": hashed,
         "bankroll": float(user.bankroll or 0.0),
+        "enabled_colors": user.enabled_colors or ["red", "black", "white"],
+        "enabled_patterns": user.enabled_patterns or [],
+        "receive_alerts": user.receive_alerts if user.receive_alerts is not None else True,
+        "is_admin": is_admin,
         "created_at": datetime.utcnow(),
     }
     res = await db_module.db.users.insert_one(doc)
-    return UserOut(id=str(res.inserted_id), email=user.email, username=user.username, bankroll=doc["bankroll"])
+    return UserOut(
+        id=str(res.inserted_id), 
+        email=user.email, 
+        username=user.username, 
+        bankroll=doc["bankroll"],
+        enabled_colors=doc["enabled_colors"],
+        enabled_patterns=doc["enabled_patterns"],
+        receive_alerts=doc["receive_alerts"],
+        is_admin=doc["is_admin"]
+    )
 
 
 @router.post("/login", response_model=Token)
@@ -87,9 +104,23 @@ async def get_current_user(request: Request):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado")
     return user
 
+async def get_admin_user(current_user: dict = Depends(get_current_user)):
+    """Dependency to ensure user is admin"""
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso negado - apenas administradores")
+    return current_user
+
 @router.get("/me")
 async def me(current_user: dict = Depends(get_current_user)):
-    return {"email": current_user["email"], "username": current_user.get("username"), "bankroll": current_user.get("bankroll", 0)}
+    return {
+        "email": current_user["email"], 
+        "username": current_user.get("username"), 
+        "bankroll": current_user.get("bankroll", 0),
+        "enabled_colors": current_user.get("enabled_colors", ["red", "black", "white"]),
+        "enabled_patterns": current_user.get("enabled_patterns", []),
+        "receive_alerts": current_user.get("receive_alerts", True),
+        "is_admin": current_user.get("is_admin", False)
+    }
 
 
 @router.get("/user/bankroll")
@@ -108,15 +139,65 @@ async def set_bankroll(payload: dict, current_user: dict = Depends(get_current_u
     return {"bankroll": val}
 
 
-@router.post("/user/bankroll/adjust")
-async def adjust_bankroll(payload: dict, current_user: dict = Depends(get_current_user)):
-    # payload expected: {"delta": -70}
-    try:
-        delta = float(payload.get("delta", 0))
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Delta inválido")
-    # Use atomic operator $inc to avoid race conditions
-    result = await db_module.db.users.find_one_and_update({"email": current_user.get("email")}, {"$inc": {"bankroll": delta}}, return_document=ReturnDocument.AFTER)
+@router.put("/preferences")
+async def update_preferences(payload: dict, current_user: dict = Depends(get_current_user)):
+    # payload expected: {"enabled_colors": ["red", "black"], "enabled_patterns": [], "receive_alerts": true}
+    update_data = {}
+    if "enabled_colors" in payload:
+        update_data["enabled_colors"] = payload["enabled_colors"]
+    if "enabled_patterns" in payload:
+        update_data["enabled_patterns"] = payload["enabled_patterns"]
+    if "receive_alerts" in payload:
+        update_data["receive_alerts"] = payload["receive_alerts"]
+    
+    if not update_data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nenhuma preferência fornecida")
+    
+    result = await db_module.db.users.find_one_and_update(
+        {"email": current_user.get("email")}, 
+        {"$set": update_data}, 
+        return_document=ReturnDocument.AFTER
+    )
     if result:
-        return {"bankroll": float(result.get("bankroll", 0))}
-    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Falha ao ajustar banca")
+        return {
+            "enabled_colors": result.get("enabled_colors", ["red", "black", "white"]),
+            "enabled_patterns": result.get("enabled_patterns", []),
+            "receive_alerts": result.get("receive_alerts", True)
+        }
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Falha ao atualizar preferências")
+
+# Admin routes
+@router.get("/admin")
+async def admin_page(admin_user: dict = Depends(get_admin_user)):
+    """Serve admin page - only for admins"""
+    return {"message": "Welcome to admin panel", "admin_email": admin_user["email"]}
+
+@router.get("/admin/users")
+async def get_all_users(admin_user: dict = Depends(get_admin_user)):
+    """Get all users - admin only"""
+    users = await db_module.db.users.find({}, {"password_hash": 0}).to_list(length=None)
+    
+    # Convert MongoDB objects to JSON serializable format
+    for user in users:
+        if "_id" in user:
+            user["_id"] = str(user["_id"])
+        if "created_at" in user and user["created_at"]:
+            user["created_at"] = user["created_at"].isoformat()
+    
+    return {"users": users, "total": len(users)}
+
+@router.get("/admin/stats")
+async def get_admin_stats(admin_user: dict = Depends(get_admin_user)):
+    """Get database statistics - admin only"""
+    total_users = await db_module.db.users.count_documents({})
+    total_bankroll = await db_module.db.users.aggregate([
+        {"$group": {"_id": None, "total": {"$sum": "$bankroll"}}}
+    ]).to_list(length=1)
+    
+    total_bankroll_value = total_bankroll[0]["total"] if total_bankroll else 0
+    
+    return {
+        "total_users": total_users,
+        "total_bankroll": float(total_bankroll_value),
+        "database_name": db_module.db.name
+    }
