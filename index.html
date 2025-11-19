@@ -148,6 +148,45 @@
         </div>
       </section>
 
+      <!-- Profit simulator: calculate expected profit based on wins/losses -->
+      <section class="profit-section">
+        <h2>Simulador de Ganhos</h2>
+        <div class="profit-card">
+          <div class="profit-input">
+            <label for="profitBetAmount"
+              ><strong>Valor da Aposta:</strong></label
+            >
+            <input
+              id="profitBetAmount"
+              type="number"
+              min="0"
+              step="0.01"
+              value="10" />
+          </div>
+          <div class="profit-results" id="profitResults">
+            <div class="profit-row">
+              <span>Total de Apostas:</span> <span id="profitTotalBets">0</span>
+            </div>
+            <div class="profit-row">
+              <span>Wins:</span> <span id="profitWins">0</span>
+            </div>
+            <div class="profit-row">
+              <span>Loss:</span> <span id="profitLosses">0</span>
+            </div>
+            <div class="profit-row">
+              <span>Lucro Líquido:</span> <span id="profitNet">-</span>
+            </div>
+            <div class="profit-row">
+              <span>Lucro por Aposta (EV):</span>
+              <span id="profitPerBet">-</span>
+            </div>
+            <div class="profit-row">
+              <span>ROI:</span> <span id="profitROI">-</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Debug controls (removed) -->
 
       <!-- Histórico de Sinais removido para simplificar a interface -->

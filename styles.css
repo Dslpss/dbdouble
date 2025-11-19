@@ -597,6 +597,57 @@ body {
   font-size: 1rem;
 }
 
+/* Profit simulator */
+.profit-section {
+  margin-bottom: 30px;
+}
+.profit-card {
+  background: var(--bg-card);
+  padding: 18px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: start;
+}
+.profit-input {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.profit-input input {
+  width: 120px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.profit-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.profit-row {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-secondary);
+}
+.profit-row span:last-child {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+@media (max-width: 600px) {
+  .profit-card {
+    grid-template-columns: 1fr;
+  }
+  .profit-input {
+    justify-content: space-between;
+  }
+}
+
 /* .btn debug styles were removed; no permanent UI buttons required */
 
 .results-section h2,

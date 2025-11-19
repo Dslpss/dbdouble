@@ -284,6 +284,56 @@ function registerResolution(entry) {
   } catch (e) {}
 }
 
+// Profit simulator UI updates
+function formatCurrency(value) {
+  try {
+    return Number(value).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  } catch (e) {
+    return String(value);
+  }
+}
+
+function updateProfitCard() {
+  const betEl = document.getElementById("profitBetAmount");
+  const totalEl = document.getElementById("profitTotalBets");
+  const winsEl = document.getElementById("profitWins");
+  const lossesEl = document.getElementById("profitLosses");
+  const netEl = document.getElementById("profitNet");
+  const perBetEl = document.getElementById("profitPerBet");
+  const roiEl = document.getElementById("profitROI");
+  if (!betEl) return;
+  const bet = parseFloat(betEl.value) || 0;
+  const wins = winCount || 0;
+  const losses = lossCount || 0;
+  const total = wins + losses;
+  const netProfit = (wins - losses) * bet; // payout 1:1
+  const perBet = total > 0 ? netProfit / total : 0;
+  const roi = total > 0 ? (netProfit / (total * bet)) * 100 : 0;
+  if (totalEl) totalEl.textContent = String(total);
+  if (winsEl) winsEl.textContent = String(wins);
+  if (lossesEl) lossesEl.textContent = String(losses);
+  if (netEl)
+    netEl.textContent = bet === 0 ? "-" : `R$ ${formatCurrency(netProfit)}`;
+  if (perBetEl)
+    perBetEl.textContent = bet === 0 ? "-" : `R$ ${formatCurrency(perBet)}`;
+  if (roiEl)
+    roiEl.textContent =
+      total === 0 || bet === 0 ? "-" : `${formatCurrency(roi)}%`;
+}
+
+// Bind event to bet input
+document.addEventListener("DOMContentLoaded", () => {
+  const betInput = document.getElementById("profitBetAmount");
+  if (betInput) {
+    betInput.addEventListener("input", () => updateProfitCard());
+  }
+  // initial update
+  updateProfitCard();
+});
+
 // Debug helpers: add counts manually from UI
 // Debug functions removed to avoid UI debug buttons in production
 
@@ -364,6 +414,11 @@ function updateWinLossCounts(outcome, signalId, resolvedAt = null) {
   const lossesEl = document.getElementById("statLosses");
   if (winsEl) winsEl.textContent = String(winCount);
   if (lossesEl) lossesEl.textContent = String(lossCount);
+
+  // Atualizar profit card caso esteja visível
+  try {
+    if (typeof updateProfitCard === "function") updateProfitCard();
+  } catch (e) {}
 }
 
 // Mostra visualmente o resultado do sinal no card (WIN/LOSS)
