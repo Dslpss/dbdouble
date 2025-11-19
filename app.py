@@ -24,6 +24,7 @@ app = FastAPI(title="DBcolor API", version="1.0.0")
 print("=" * 60)
 print("✅ DBcolor API carregada - Versão com interface HTML")
 print("=" * 60)
+print(f"Configured PLAYNABETS_WS_URL: {os.getenv('PLAYNABETS_WS_URL', CONFIG.WS_URL)}")
 
 # CORS
 app.add_middleware(
