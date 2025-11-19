@@ -451,10 +451,10 @@ function updateMartingaleUI() {
   const nextBet = calculateNextBet(bet, losses);
   const capitalNeeded = calculateCapitalNeeded(bet, losses);
   if (sequenceEl) sequenceEl.textContent = seqText === "" ? "-" : seqText;
-  if (cumulativeEl) cumulativeEl.textContent = `R$ ${formatCurrency(cumulative)}`;
+  if (cumulativeEl)
+    cumulativeEl.textContent = `R$ ${formatCurrency(cumulative)}`;
   if (nextEl) nextEl.textContent = `R$ ${formatCurrency(nextBet)}`;
-  if (capitalEl)
-    capitalEl.textContent = `R$ ${formatCurrency(capitalNeeded)}`;
+  if (capitalEl) capitalEl.textContent = `R$ ${formatCurrency(capitalNeeded)}`;
   // Bankroll coverage
   const bankrollEl = document.getElementById("profitBankroll");
   const coverageEl = document.getElementById("martingaleCoverage");
@@ -475,7 +475,8 @@ function updateMartingaleUI() {
   // exibir a contagem atual de perdas consecutivas de sinal
   try {
     const streakElDom = document.getElementById("currentSignalLossStreak");
-    if (streakElDom) streakElDom.textContent = String(getConsecutiveSignalLosses());
+    if (streakElDom)
+      streakElDom.textContent = String(getConsecutiveSignalLosses());
   } catch (e) {}
 }
 
