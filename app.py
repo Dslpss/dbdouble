@@ -185,6 +185,31 @@ async def events(request: Request):
         }
     )
 
+
+@app.on_event("startup")
+async def startup_ws_client():
+    """Tentativa de iniciar a conexão WebSocket automaticamente na inicialização do app.
+    Isso faz o backend começar a receber resultados mesmo sem cliente SSE conectado.
+    """
+    global ws_connection
+    try:
+        if ws_connection is None:
+            ws_connection = WSClient(CONFIG.WS_URL, on_message)
+            await ws_connection.start()
+            print(f"[startup] WSClient iniciado para {CONFIG.WS_URL}")
+    except Exception as e:
+        print(f"[startup] Falha ao iniciar WSClient: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_ws_client():
+    global ws_connection
+    try:
+        if ws_connection is not None:
+            await ws_connection.stop()
+            print("[shutdown] WSClient finalizado")
+    except Exception as e:
+        print(f"[shutdown] Erro ao finalizar WSClient: {e}")
+
 def on_message(data: Dict):
     """Callback para mensagens do WebSocket"""
     global results_history, ws_connected
