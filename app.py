@@ -120,6 +120,17 @@ async def status():
         "timestamp": int(time.time() * 1000)
     }
 
+
+@app.get("/api/results")
+async def api_get_results(limit: int = 20):
+    """Retorna os últimos resultados processados (úteis para troubleshooting)."""
+    return {
+        "ok": True,
+        "wsConnected": ws_connected,
+        "results_count": len(results_history),
+        "results": results_history[:limit],
+    }
+
 @app.post("/api/connect")
 async def connect():
     """Conectar ao WebSocket"""
