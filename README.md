@@ -12,6 +12,22 @@ Replicação do projeto doubleplay com arquitetura similar.
 - 📡 Server-Sent Events (SSE) para resultados em tempo real
 - 🔌 Conexão WebSocket com Play na Bets
 
+## Deploy
+
+To deploy to Railway (or any similar PaaS):
+
+- Ensure you set environment variables in the platform (e.g., `PLAYNABETS_WS_URL`, `MARTINGALE_ENABLED`, etc.).
+- In Railway, set start command or use the `Procfile` already included in the repo. The `Procfile` contains:
+
+```
+web: uvicorn app:app --host 0.0.0.0 --port $PORT
+```
+
+If you prefer to run a script, you can use `start-prod.sh` which starts Uvicorn using `$PORT` with a single worker.
+
+On local development, use `python main.py` to start the server or `start.sh` to create a venv and run the app (dev mode).
+
+
 ## Pré-requisitos
 
 - Python 3.11 ou superior
