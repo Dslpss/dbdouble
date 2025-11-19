@@ -27,7 +27,6 @@ If you prefer to run a script, you can use `start-prod.sh` which starts Uvicorn 
 
 On local development, use `python main.py` to start the server or `start.sh` to create a venv and run the app (dev mode).
 
-
 ## Pré-requisitos
 
 - Python 3.11 ou superior
