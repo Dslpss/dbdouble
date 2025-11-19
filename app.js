@@ -35,7 +35,53 @@ let signalOutcomeHistory = []; // { outcome: 'win'|'loss', ts }
 const RESOLUTION_DEDUP_WINDOW_MS = 8000; // 8 segundos
 
 // Inicialização
-document.addEventListener("DOMContentLoaded", () => {
+// Ensure user is authenticated before loading the app. If user is not authenticated,
+// redirect to /auth, otherwise continue with initialization.
+async function ensureAuthenticated() {
+  try {
+    const path = window.location.pathname || "/";
+    const token = localStorage.getItem("token");
+    // If on auth page, and token exists and is valid, redirect to root
+    if (path === "/auth") {
+      if (!token) return; // stay on auth
+      // validate token
+      const resp = await fetch(`${API_BASE_URL}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (resp.ok) {
+        // token valid, go to root
+        window.location = "/";
+      } else {
+        // invalid token - clear
+        localStorage.removeItem("token");
+      }
+      return;
+    }
+    // If not on auth page, we require token
+    if (!token) {
+      window.location = "/auth";
+      return;
+    }
+    // validate token server-side
+    const resp = await fetch(`${API_BASE_URL}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!resp.ok) {
+      localStorage.removeItem("token");
+      window.location = "/auth";
+      return;
+    }
+    // token ok - nothing to do
+  } catch (e) {
+    try {
+      localStorage.removeItem("token");
+    } catch (e) {}
+    window.location = "/auth";
+  }
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+  await ensureAuthenticated();
   initializeApp();
 });
 
@@ -49,6 +95,75 @@ function initializeApp() {
   const lossesEl = document.getElementById("statLosses");
   if (winsEl) winsEl.textContent = String(winCount);
   if (lossesEl) lossesEl.textContent = String(lossCount);
+
+  // Mostrar informações do usuário se logado
+  showUserInfo();
+}
+
+// Mostrar informações do usuário logado
+async function showUserInfo() {
+  const token = localStorage.getItem("token");
+  if (!token) return;
+
+  try {
+    // Buscar informações do usuário
+    const resp = await fetch(`${API_BASE_URL}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (resp.ok) {
+      const userData = await resp.json();
+
+      // Buscar bankroll
+      const bankResp = await fetch(`${API_BASE_URL}/api/auth/user/bankroll`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      let bankroll = 0;
+      if (bankResp.ok) {
+        const bankData = await bankResp.json();
+        bankroll = bankData.bankroll || 0;
+      }
+
+      // Mostrar informações
+      const userInfo = document.getElementById("userInfo");
+      const userEmail = document.getElementById("userEmail");
+      const userBankroll = document.getElementById("userBankroll");
+
+      if (userInfo && userEmail && userBankroll) {
+        userEmail.textContent = userData.email;
+        userBankroll.textContent = `R$ ${bankroll.toFixed(2)}`;
+        userInfo.style.display = "flex";
+      }
+    }
+  } catch (error) {
+    console.error("Erro ao buscar informações do usuário:", error);
+  }
+}
+
+// Função de logout
+async function logout() {
+  try {
+    // Chamar endpoint de logout para limpar cookie
+    await fetch(`${API_BASE_URL}/api/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch (error) {
+    console.error("Erro no logout:", error);
+  }
+
+  // Limpar localStorage
+  localStorage.removeItem("token");
+
+  // Esconder informações do usuário
+  const userInfo = document.getElementById("userInfo");
+  if (userInfo) {
+    userInfo.style.display = "none";
+  }
+
+  // Redirecionar para página de auth
+  window.location.href = "/auth";
 }
 
 // Conexão SSE
@@ -391,13 +506,14 @@ function calculateCapitalNeeded(initial, losses) {
 }
 
 // Ajusta a banca com base no outcome e attemptsUsed (Martingale)
-function adjustBankrollOnOutcome(outcome, attemptsUsed) {
+async function adjustBankrollOnOutcome(outcome, attemptsUsed) {
   try {
     const betEl = document.getElementById("profitBetAmount");
     const bankEl = document.getElementById("profitBankroll");
     if (!betEl || !bankEl) return;
     const initial = Number(betEl.value) || 0;
     let bank = Number(bankEl.value) || 0;
+    const oldBank = bank;
     // Normalizar outcome
     const out = (outcome || "").toLowerCase();
     if (out === "win") {
@@ -414,6 +530,33 @@ function adjustBankrollOnOutcome(outcome, attemptsUsed) {
     bankEl.value = Number(bank).toFixed(2);
     try {
       localStorage.setItem("profitBankroll", bankEl.value);
+    } catch (e) {}
+    const delta = Number(bank) - Number(oldBank);
+    // if user is authenticated, sync with backend
+    try {
+      const token = localStorage.getItem("token");
+      if (token) {
+        const resp = await fetch(
+          `${API_BASE_URL}/api/auth/user/bankroll/adjust`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ delta: delta }),
+          }
+        );
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data && data.bankroll !== undefined) {
+            bankEl.value = Number(data.bankroll).toFixed(2);
+            try {
+              localStorage.setItem("profitBankroll", bankEl.value);
+            } catch (e) {}
+          }
+        }
+      }
     } catch (e) {}
     // Atualizar UI de martingale/coverage
     try {
@@ -482,6 +625,12 @@ function updateMartingaleUI() {
 
 // Bind event to bet input
 document.addEventListener("DOMContentLoaded", () => {
+  // Logout button
+  const logoutBtn = document.getElementById("btnLogout");
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", logout);
+  }
+
   const betInput = document.getElementById("profitBetAmount");
   if (betInput) {
     betInput.addEventListener("input", () => updateProfitCard());
@@ -509,6 +658,34 @@ document.addEventListener("DOMContentLoaded", () => {
         localStorage.setItem("profitBankroll", bankrollInput.value);
       } catch (e) {}
     });
+    bankrollInput.addEventListener("change", async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const val = Number(bankrollInput.value) || 0;
+        if (token) {
+          const resp = await fetch(`${API_BASE_URL}/api/auth/user/bankroll`, {
+            method: "PUT",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ bankroll: val }),
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data && data.bankroll !== undefined) {
+              bankrollInput.value = Number(data.bankroll).toFixed(2);
+              try {
+                localStorage.setItem("profitBankroll", bankrollInput.value);
+              } catch (e) {}
+              try {
+                updateMartingaleUI();
+              } catch (e) {}
+            }
+          }
+        }
+      } catch (e) {}
+    });
   }
   const useWL = document.getElementById("useWinsLosses");
   if (useWL) {
@@ -529,6 +706,29 @@ document.addEventListener("DOMContentLoaded", () => {
     if (savedStreak && mgStreak) mgStreak.value = savedStreak;
     const savedUse = localStorage.getItem("useWinsLosses");
     if (savedUse && useWL) useWL.checked = savedUse === "1";
+  } catch (e) {}
+  // If user has token, attempt to fetch bankroll from server to sync
+  try {
+    const token = localStorage.getItem("token");
+    const bankrollInputEl = document.getElementById("profitBankroll");
+    if (token && bankrollInputEl) {
+      fetch(`${API_BASE_URL}/api/auth/user/bankroll`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data && data.bankroll !== undefined) {
+            bankrollInputEl.value = Number(data.bankroll).toFixed(2);
+            try {
+              localStorage.setItem("profitBankroll", bankrollInputEl.value);
+            } catch (e) {}
+            try {
+              updateMartingaleUI();
+            } catch (e) {}
+          }
+        })
+        .catch((er) => {});
+    }
   } catch (e) {}
 });
 

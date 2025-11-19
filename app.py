@@ -9,6 +9,8 @@ import asyncio
 import json
 import time
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import traceback
 from datetime import datetime
 from typing import List, Dict, Any
@@ -17,6 +19,8 @@ from services.parser import parse_double_payload
 from services.double import detect_best_double_signal
 from services.adaptive_calibration import update_pattern_stat, online_update_platt
 from config import CONFIG
+from db import init_db
+from routes.auth import router as auth_router, get_current_user
 
 app = FastAPI(title="DBcolor API", version="1.0.0")
 
@@ -35,6 +39,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include auth routes
+try:
+    app.include_router(auth_router)
+    print("✅ Auth routes registered")
+except Exception:
+    pass
+
+# Initialize DB
+try:
+    init_db(app)
+    print("✅ MongoDB initialized")
+except Exception as e:
+    print("⚠️ Could not initialize MongoDB:", e)
+
 # Estado global
 results_history: List[Dict] = []
 ws_connection: WSClient = None
@@ -44,9 +62,16 @@ event_clients: List[asyncio.Queue] = []
 pending_bets: List[Dict] = []
 
 @app.get("/", response_class=HTMLResponse)
-async def root():
-    """Página principal da interface"""
-    # Sempre tentar servir HTML primeiro
+async def root(request: Request):
+    """Página principal da interface - requer autenticação"""
+    # Verificar se usuário está autenticado
+    try:
+        await get_current_user(request)
+    except Exception:
+        # Não autenticado, redirecionar para auth
+        return HTMLResponse(content="", status_code=302, headers={"Location": "/auth"})
+
+    # Usuário autenticado, servir HTML
     base_dir = os.path.dirname(os.path.abspath(__file__))
     html_path = os.path.join(base_dir, "index.html")
     
@@ -102,6 +127,15 @@ async def styles():
     if os.path.exists(css_path):
         return FileResponse(css_path, media_type="text/css")
     return {"error": "File not found"}, 404
+
+
+@app.get("/auth", response_class=HTMLResponse)
+async def auth_page():
+    html_path = os.path.join(base_dir, "auth.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse("<h1>Auth page not found</h1>", status_code=404)
 
 @app.get("/app.js")
 async def app_js():

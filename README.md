@@ -89,6 +89,17 @@ Configure a URL do WebSocket através de variável de ambiente:
 export PLAYNABETS_WS_URL=wss://play.soline.bet:5903/Game
 ```
 
+### Usando `.env`
+
+Você pode criar um arquivo `.env` na raiz do projeto com as variáveis necessárias. Copie `.env.example` e preencha com suas credenciais seguras:
+
+```bash
+cp .env.example .env
+# Edite .env com seus valores
+```
+
+Lembre-se de nunca commitar o arquivo `.env` para o repositório. O arquivo `.env` já está listado em `.gitignore`.
+
 ## Nova configuração: emissão somente para 1 padrão
 
 Você pode controlar o comportamento do servidor para só emitir sinais quando exatamente um único padrão for detectado. Por padrão a opção está desativada (comportamento atual).
@@ -148,6 +159,12 @@ DBcolor/
 - `GET /api/status` - Status da conexão WebSocket
 - `POST /api/connect` - Conectar ao WebSocket
 - `GET /events` - Server-Sent Events para resultados em tempo real
+
+Adicionamos endpoints para persistir a banca do usuário (apenas para usuários autenticados):
+
+- `GET /api/auth/user/bankroll` - retorna `{ bankroll: number }` para o usuário logado
+- `PUT /api/auth/user/bankroll` - atualiza o valor absoluto da banca (payload: `{ bankroll: number }`)
+- `POST /api/auth/user/bankroll/adjust` - ajusta a banca por delta (payload: `{ delta: number }`) - útil para atualizar saldo após win/loss
 
 ## Padrões Detectados
 

@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DBcolor - Autenticação</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      body {
+        background: linear-gradient(
+          135deg,
+          #0a0e27 0%,
+          #151932 50%,
+          #1e2340 100%
+        );
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        margin: 0;
+        padding: 20px;
+      }
+
+      .auth-container {
+        width: 100%;
+        max-width: 1200px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 40px;
+        background: rgba(30, 30, 60, 0.95);
+        backdrop-filter: blur(20px);
+        border-radius: 20px;
+        padding: 40px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        animation: fadeInUp 0.8s ease-out;
+      }
+
+      @keyframes fadeInUp {
+        from {
+          opacity: 0;
+          transform: translateY(30px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .welcome-section {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        color: white;
+        padding-right: 20px;
+      }
+
+      .welcome-section h1 {
+        font-size: 3.5rem;
+        font-weight: 700;
+        margin-bottom: 20px;
+        background: linear-gradient(135deg, #00ff88, #00d4ff, #ff6b6b);
+        background-clip: text;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        animation: gradientShift 3s ease-in-out infinite;
+      }
+
+      @keyframes gradientShift {
+        0%,
+        100% {
+          background-position: 0% 50%;
+        }
+        50% {
+          background-position: 100% 50%;
+        }
+      }
+
+      .welcome-section p {
+        font-size: 1.2rem;
+        line-height: 1.6;
+        color: #a0a8c8;
+        margin-bottom: 30px;
+      }
+
+      .features {
+        list-style: none;
+        padding: 0;
+      }
+
+      .features li {
+        margin-bottom: 15px;
+        padding-left: 25px;
+        position: relative;
+        color: #c0c8e0;
+      }
+
+      .features li::before {
+        content: "✓";
+        position: absolute;
+        left: 0;
+        color: #00ff88;
+        font-weight: bold;
+      }
+
+      .auth-section {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+
+      .auth-tabs {
+        display: flex;
+        margin-bottom: 30px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        padding: 4px;
+      }
+
+      .auth-tab {
+        flex: 1;
+        padding: 12px 24px;
+        border: none;
+        background: transparent;
+        color: #a0a8c8;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: 500;
+        transition: all 0.3s ease;
+      }
+
+      .auth-tab.active {
+        background: linear-gradient(135deg, #00ff88, #00d4ff);
+        color: white;
+        box-shadow: 0 4px 15px rgba(0, 255, 136, 0.3);
+      }
+
+      .auth-form {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 16px;
+        padding: 30px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      .form-group label {
+        display: block;
+        color: #e0e8ff;
+        font-weight: 500;
+        margin-bottom: 8px;
+        font-size: 0.95rem;
+      }
+
+      .form-group input {
+        width: 100%;
+        padding: 14px 16px;
+        border: 2px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.05);
+        color: white;
+        font-size: 1rem;
+        transition: all 0.3s ease;
+        box-sizing: border-box;
+      }
+
+      .form-group input:focus {
+        outline: none;
+        border-color: #00d4ff;
+        box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .form-group input::placeholder {
+        color: #888;
+      }
+
+      .auth-btn {
+        width: 100%;
+        padding: 14px;
+        border: none;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #00ff88, #00d4ff);
+        color: white;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        margin-bottom: 15px;
+        box-shadow: 0 4px 15px rgba(0, 255, 136, 0.3);
+      }
+
+      .auth-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0, 255, 136, 0.4);
+      }
+
+      .auth-btn:active {
+        transform: translateY(0);
+      }
+
+      .result-message {
+        margin-top: 15px;
+        padding: 12px;
+        border-radius: 8px;
+        text-align: center;
+        font-weight: 500;
+        transition: all 0.3s ease;
+      }
+
+      .result-message.success {
+        background: rgba(0, 255, 136, 0.2);
+        color: #00ff88;
+        border: 1px solid rgba(0, 255, 136, 0.3);
+      }
+
+      .result-message.error {
+        background: rgba(255, 107, 107, 0.2);
+        color: #ff6b6b;
+        border: 1px solid rgba(255, 107, 107, 0.3);
+      }
+
+      .token-display {
+        margin-top: 20px;
+        padding: 15px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .token-display h4 {
+        margin: 0 0 10px 0;
+        color: #e0e8ff;
+        font-size: 0.9rem;
+      }
+
+      .token-display div {
+        word-break: break-all;
+        background: rgba(0, 0, 0, 0.3);
+        padding: 10px;
+        border-radius: 6px;
+        color: #00d4ff;
+        font-family: "Courier New", monospace;
+        font-size: 0.85rem;
+      }
+
+      .bankroll-section {
+        margin-top: 20px;
+        padding: 20px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .bankroll-controls {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 15px;
+      }
+
+      .bankroll-controls input {
+        flex: 1;
+      }
+
+      .bankroll-controls button {
+        padding: 14px 16px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.3s ease;
+      }
+
+      .btn-secondary {
+        background: rgba(255, 255, 255, 0.1);
+        color: #a0a8c8;
+      }
+
+      .btn-secondary:hover {
+        background: rgba(255, 255, 255, 0.2);
+        color: white;
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, #ff6b6b, #ff8e53);
+        color: white;
+        box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+      }
+
+      .btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
+      }
+
+      @media (max-width: 768px) {
+        .auth-container {
+          grid-template-columns: 1fr;
+          gap: 30px;
+          padding: 20px;
+        }
+
+        .welcome-section h1 {
+          font-size: 2.5rem;
+        }
+
+        .auth-form {
+          padding: 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="auth-container">
+      <div class="welcome-section">
+        <h1>DBcolor</h1>
+        <p>
+          Bem-vindo ao sistema de análise avançada de Double. Faça login ou
+          registre-se para acessar todas as funcionalidades premium.
+        </p>
+        <ul class="features">
+          <li>Análise em tempo real de padrões</li>
+          <li>Sistema de martingale inteligente</li>
+          <li>Gestão completa de bankroll</li>
+          <li>Interface responsiva e moderna</li>
+        </ul>
+      </div>
+
+      <div class="auth-section">
+        <div class="auth-tabs">
+          <button class="auth-tab active" onclick="showTab('register')">
+            Registrar
+          </button>
+          <button class="auth-tab" onclick="showTab('login')">Login</button>
+        </div>
+
+        <div id="register-form" class="auth-form">
+          <div class="form-group">
+            <label for="reg-email">Email</label>
+            <input id="reg-email" type="email" placeholder="seu@email.com" />
+          </div>
+          <div class="form-group">
+            <label for="reg-username">Nome de usuário</label>
+            <input id="reg-username" type="text" placeholder="Seu nome" />
+          </div>
+          <div class="form-group">
+            <label for="reg-bankroll">Bankroll inicial (R$)</label>
+            <input
+              id="reg-bankroll"
+              type="number"
+              placeholder="100.00"
+              step="0.01" />
+          </div>
+          <div class="form-group">
+            <label for="reg-password">Senha</label>
+            <input id="reg-password" type="password" placeholder="••••••••" />
+          </div>
+          <button class="auth-btn" id="btn-register">Criar conta</button>
+          <div id="register-result"></div>
+        </div>
+
+        <div id="login-form" class="auth-form" style="display: none">
+          <div class="form-group">
+            <label for="login-email">Email</label>
+            <input id="login-email" type="email" placeholder="seu@email.com" />
+          </div>
+          <div class="form-group">
+            <label for="login-password">Senha</label>
+            <input id="login-password" type="password" placeholder="••••••••" />
+          </div>
+          <button class="auth-btn" id="btn-login">Entrar</button>
+          <div id="login-result"></div>
+
+          <div class="token-display">
+            <h4>Token JWT</h4>
+            <div id="token">-</div>
+          </div>
+
+          <div class="bankroll-section">
+            <h4 style="color: #e0e8ff; margin-bottom: 15px">
+              Gerenciar Bankroll
+            </h4>
+            <div class="form-group">
+              <label for="me-bankroll">Valor atual (R$)</label>
+              <input
+                id="me-bankroll"
+                type="number"
+                placeholder="0.00"
+                step="0.01" />
+            </div>
+            <div class="bankroll-controls">
+              <button class="btn-secondary" id="btn-get-bankroll">
+                Carregar
+              </button>
+              <button class="btn-primary" id="btn-set-bankroll">
+                Atualizar
+              </button>
+            </div>
+            <div id="me-bankroll-result"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const apiBase = ""; // relative
+
+      function showTab(tab) {
+        const registerForm = document.getElementById("register-form");
+        const loginForm = document.getElementById("login-form");
+        const registerTab = document.querySelector(".auth-tab:first-child");
+        const loginTab = document.querySelector(".auth-tab:last-child");
+
+        if (tab === "register") {
+          registerForm.style.display = "block";
+          loginForm.style.display = "none";
+          registerTab.classList.add("active");
+          loginTab.classList.remove("active");
+        } else {
+          registerForm.style.display = "none";
+          loginForm.style.display = "block";
+          registerTab.classList.remove("active");
+          loginTab.classList.add("active");
+        }
+      }
+
+      function showResult(elementId, message, isSuccess = false) {
+        const element = document.getElementById(elementId);
+        element.innerHTML = message;
+        element.className = `result-message ${isSuccess ? "success" : "error"}`;
+        element.style.display = "block";
+
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+          element.style.display = "none";
+        }, 5000);
+      }
+
+      async function register() {
+        const email = document.getElementById("reg-email").value;
+        const username = document.getElementById("reg-username").value;
+        const password = document.getElementById("reg-password").value;
+        const bankroll = document.getElementById("reg-bankroll").value || 0;
+
+        if (!email || !username || !password) {
+          showResult(
+            "register-result",
+            "Por favor, preencha todos os campos obrigatórios."
+          );
+          return;
+        }
+
+        try {
+          const res = await fetch(`${apiBase}/api/auth/register`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, username, password, bankroll }),
+          });
+
+          const data = await res.json();
+
+          if (res.ok) {
+            showResult(
+              "register-result",
+              "Conta criada com sucesso! Faça login para continuar.",
+              true
+            );
+            // Switch to login tab
+            setTimeout(() => showTab("login"), 1500);
+          } else {
+            showResult(
+              "register-result",
+              data.detail || "Erro ao criar conta."
+            );
+          }
+        } catch (error) {
+          showResult("register-result", "Erro de conexão. Tente novamente.");
+        }
+      }
+
+      async function login() {
+        const email = document.getElementById("login-email").value;
+        const password = document.getElementById("login-password").value;
+
+        if (!email || !password) {
+          showResult("login-result", "Por favor, preencha email e senha.");
+          return;
+        }
+
+        try {
+          const res = await fetch(`${apiBase}/api/auth/login`, {
+            method: "POST",
+            body: new URLSearchParams({ username: email, password }),
+            credentials: "include",
+          });
+
+          const data = await res.json();
+
+          if (res.ok && data.access_token) {
+            localStorage.setItem("token", data.access_token);
+            document.getElementById("token").innerText = data.access_token;
+            showResult("login-result", "Login realizado com sucesso!", true);
+
+            // Load bankroll automatically
+            try {
+              const bankRes = await fetch(`${apiBase}/api/auth/user/bankroll`, {
+                headers: { Authorization: `Bearer ${data.access_token}` },
+              });
+              if (bankRes.ok) {
+                const bankData = await bankRes.json();
+                if (bankData.bankroll !== undefined) {
+                  document.getElementById("me-bankroll").value =
+                    bankData.bankroll;
+                }
+              }
+            } catch (e) {}
+
+            // Redirect to main page
+            setTimeout(() => {
+              window.location = "/";
+            }, 1500);
+          } else {
+            showResult("login-result", data.detail || "Credenciais inválidas.");
+          }
+        } catch (error) {
+          showResult("login-result", "Erro de conexão. Tente novamente.");
+        }
+      }
+
+      // Event listeners
+      document
+        .getElementById("btn-register")
+        .addEventListener("click", register);
+      document.getElementById("btn-login").addEventListener("click", login);
+
+      document
+        .getElementById("btn-get-bankroll")
+        .addEventListener("click", async () => {
+          const token = localStorage.getItem("token");
+          if (!token) {
+            showResult("me-bankroll-result", "Faça login primeiro.");
+            return;
+          }
+
+          try {
+            const res = await fetch(`${apiBase}/api/auth/user/bankroll`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+
+            const data = await res.json();
+            document.getElementById("me-bankroll").value = data.bankroll;
+            showResult(
+              "me-bankroll-result",
+              `Bankroll atualizado: R$ ${data.bankroll}`,
+              true
+            );
+          } catch (error) {
+            showResult("me-bankroll-result", "Erro ao carregar bankroll.");
+          }
+        });
+
+      document
+        .getElementById("btn-set-bankroll")
+        .addEventListener("click", async () => {
+          const token = localStorage.getItem("token");
+          const val = document.getElementById("me-bankroll").value;
+
+          if (!token) {
+            showResult("me-bankroll-result", "Faça login primeiro.");
+            return;
+          }
+
+          if (!val || isNaN(val)) {
+            showResult("me-bankroll-result", "Digite um valor válido.");
+            return;
+          }
+
+          try {
+            const res = await fetch(`${apiBase}/api/auth/user/bankroll`, {
+              method: "PUT",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ bankroll: parseFloat(val) }),
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+              showResult(
+                "me-bankroll-result",
+                `Bankroll atualizado para R$ ${data.bankroll}`,
+                true
+              );
+            } else {
+              showResult(
+                "me-bankroll-result",
+                data.detail || "Erro ao atualizar bankroll."
+              );
+            }
+          } catch (error) {
+            showResult("me-bankroll-result", "Erro de conexão.");
+          }
+        });
+
+      // Enter key support
+      document.addEventListener("keypress", function (e) {
+        if (e.key === "Enter") {
+          const activeForm = document.querySelector(
+            '.auth-form:not([style*="display: none"])'
+          );
+          if (activeForm && activeForm.id === "register-form") {
+            register();
+          } else {
+            login();
+          }
+        }
+      });
+    </script>
+  </body>
+</html>

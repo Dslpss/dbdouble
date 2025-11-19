@@ -1102,3 +1102,47 @@ body {
     font-size: 2rem;
   }
 }
+
+/* User Info and Logout */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.user-info #userEmail {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.user-info #userBankroll {
+  background: var(--bg-secondary);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-weight: 500;
+  color: var(--accent-green);
+}
+
+.logout-btn {
+  background: var(--accent-red);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.logout-btn:hover {
+  background: #cc3333;
+}
