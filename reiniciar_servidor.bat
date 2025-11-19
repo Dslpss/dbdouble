@@ -16,3 +16,5 @@ echo Iniciando servidor...
 python main.py
 pause
 
+
+

@@ -284,9 +284,13 @@ def on_message(data: Dict):
 
                     print(f"[MARTINGALE] Verificando bet {pb.get('id')} | Alvo: {target_color} | Saiu: {res_color} | Tentativas rest: {attempts_left}")
                     
-                    if res_color == target_color:
+                    # Verificar WIN: cor alvo OU white (se protect_white estiver ativo)
+                    protect_white = pb.get('protect_white', False)
+                    is_win = (res_color == target_color) or (protect_white and res_color == 'white')
+                    
+                    if is_win:
                         # Ganhou
-                        print(f"[MARTINGALE] WIN detectado para {pb.get('id')}")
+                        print(f"[MARTINGALE] WIN detectado para {pb.get('id')} | Cor alvo: {target_color} | Saiu: {res_color} | Protect white: {protect_white}")
                         pb['attemptsUsed'] = pb.get('attemptsUsed', 0) + 1
                         pb['resolved'] = True
                         pb['result'] = 'win'
@@ -374,6 +378,7 @@ def on_message(data: Dict):
                                 'createdAt': int(time.time() * 1000),
                                 'attemptsLeft': CONFIG.MARTINGALE_MAX_ATTEMPTS,
                                 'attemptsUsed': 0,
+                                'protect_white': signal.get('suggestedBet', {}).get('protect_white', False),
                             }
                             pending_bets.append(pb)
                     except Exception:

@@ -626,6 +626,7 @@ function handleBackendSignal(signalData) {
     return;
   }
   const signal = {
+    id: signalData.id || null, // Preservar id do backend para sincronização
     type: signalData.type || "MEDIUM_SIGNAL",
     confidence: signalData.confidence || 7.0,
     description: signalData.description || "Padrão detectado",

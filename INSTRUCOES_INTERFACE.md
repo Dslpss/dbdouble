@@ -150,3 +150,5 @@ curl http://localhost:3001/ -H "Accept: text/html"
 ```
 
 Ou abra o DevTools do navegador (F12) e veja a resposta da requisição.
+
+

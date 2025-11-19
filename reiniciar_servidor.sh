@@ -19,3 +19,5 @@ echo ""
 echo "Iniciando servidor..."
 python main.py
 
+
+

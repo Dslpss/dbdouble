@@ -50,3 +50,5 @@ except Exception as e:
     print(f"❌ ERRO: {e}")
     sys.exit(1)
 
+
+
