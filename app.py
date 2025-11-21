@@ -17,10 +17,19 @@ from typing import List, Dict, Any
 from services.ws_client import WSClient
 from services.parser import parse_double_payload
 from services.double import detect_best_double_signal
+from services.double import numbers_for_color
 from services.adaptive_calibration import update_pattern_stat, online_update_platt
 from config import CONFIG
 from db import init_db
 from routes.auth import router as auth_router, get_current_user
+# Import do motor de padrões simples (opcional)
+try:
+    from services.pattern_signals import SignalEngine
+    USE_PATTERN_ENGINE = True
+    pattern_engine = SignalEngine()
+except Exception:
+    USE_PATTERN_ENGINE = False
+    pattern_engine = None
 
 app = FastAPI(title="DBcolor API", version="1.0.0")
 
@@ -390,7 +399,59 @@ def on_message(data: Dict):
                     print(f"[DBG] Sinal suprimido: existem {len(pending_bets)} pendentes e BLOCK_SIGNALS_WHILE_PENDING=True")
                     signal = None
                 else:
-                    signal = detect_best_double_signal(results_history)
+                    signal = None
+                    # Opção: usar SignalEngine simples (implementa os 8 padrões)
+                    if getattr(CONFIG, 'USE_PATTERN_SIGNALS', False) and USE_PATTERN_ENGINE:
+                        # Mapear histórico para formato curto ['V','P','B']
+                        short_hist = []
+                        for r in results_history:
+                            c = r.get('color')
+                            if c == 'red':
+                                short_hist.append('V')
+                            elif c == 'black':
+                                short_hist.append('P')
+                            else:
+                                short_hist.append('B')
+                        pe = pattern_engine.avaliar_historico(short_hist, rodada_atual=len(short_hist))
+                        if pe.get('signal'):
+                            # Mapear para formato de sinal compatível
+                            pid = pe.get('pattern_id')
+                            sugg = pe.get('suggestion')
+                            conf_label = pe.get('confidence')
+                            # converter sugestão para cores do sistema
+                            color_map = {'V': 'red', 'P': 'black', 'B': 'white'}
+                            suggested_color = color_map.get(sugg, None)
+                            # chance estimada simplificada baseada no label de confiança
+                            chance_map = {'alto': 85, 'medio-alto': 75, 'medio': 65, 'baixo-medio': 55, 'baixo': 30}
+                            chance_pct = chance_map.get(conf_label, 50)
+                            targets = numbers_for_color(suggested_color) if suggested_color else []
+                            signal = {
+                                'id': f'ps_{int(time.time()*1000)}',
+                                'type': 'MEDIUM_SIGNAL' if conf_label in ('medio','medio-alto') else ('STRONG_SIGNAL' if conf_label in ('alto','medio-alto') else 'WEAK_SIGNAL'),
+                                'color': '#90ee90',
+                                'description': f'PatternEngine P{pid} detected',
+                                'patternKey': f'P{pid}',
+                                'confidence': 8.5 if conf_label == 'alto' else (7.5 if conf_label in ('medio','medio-alto') else 6.0),
+                                'suggestedBet': {
+                                    'type': 'color',
+                                    'color': suggested_color,
+                                    'numbers': targets,
+                                    'coverage': f"{len(targets)} números",
+                                    'expectedRoi': 'Simulado',
+                                    'protect_white': True
+                                },
+                                'targets': targets,
+                                'reasons': [f'PatternEngine: P{pid}'],
+                                'validFor': 3,
+                                'timestamp': int(time.time() * 1000),
+                                'chance': chance_pct,
+                                'afterNumber': None,
+                                'afterColor': None,
+                                'suggestedText': f"Sinal P{pid}: apostar {suggested_color}" if suggested_color else 'Sinal'
+                            }
+                    # Se não foi gerado sinal pelo pattern engine, manter o detector original
+                    if not signal:
+                        signal = detect_best_double_signal(results_history)
                 if signal:
                     # Antes de enviar a notificação, criar pendente para martingale (se ativado)
                     pb_id = None

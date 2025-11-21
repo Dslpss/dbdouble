@@ -51,5 +51,9 @@ class Config:
         "cal_intercept": -0.0047349634512580336,
     }
 
+    # Habilitar uso do motor simples de padrões implementado em services/pattern_signals.py
+    # Se True, o app usará SignalEngine para detectar sinais de acordo com os 8 padrões.
+    USE_PATTERN_SIGNALS = True
+
 CONFIG = Config()
 
