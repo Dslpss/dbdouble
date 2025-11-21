@@ -98,6 +98,54 @@ function initializeApp() {
 
   // Mostrar informações do usuário se logado
   showUserInfo();
+
+  // Inicializar quadrado do header (toggle vermelho/preto)
+  try {
+    const headerSquare = document.getElementById("headerSquare");
+    if (headerSquare) {
+      // Estado inicial: vermelho
+      headerSquare.classList.remove("black");
+      headerSquare.title = "Estado: Vermelho (clique para alternar)";
+      headerSquare.addEventListener("click", () => {
+        headerSquare.classList.toggle("black");
+        const isBlack = headerSquare.classList.contains("black");
+        headerSquare.title = isBlack
+          ? "Estado: Preto (clique para alternar)"
+          : "Estado: Vermelho (clique para alternar)";
+      });
+    }
+  } catch (e) {
+    console.error("Erro inicializando headerSquare:", e);
+  }
+
+  // Botão de recarregar iframe do cassino
+  try {
+    const reloadBtn = document.getElementById("reloadGameBtn");
+    const gameContainer = document.querySelector(".game-container");
+    const iframe = document.getElementById("playnaIframe");
+    if (reloadBtn && iframe) {
+      reloadBtn.addEventListener("click", () => {
+        // Visual feedback
+        if (gameContainer) {
+          gameContainer.classList.add("reloading");
+        }
+        // Recarregar com cache-buster
+        try {
+          const src = iframe.getAttribute("src") || "";
+          const sep = src.includes("?") ? "&" : "?";
+          iframe.setAttribute("src", src + sep + "t=" + Date.now());
+        } catch (e) {
+          console.error("Erro ao recarregar iframe:", e);
+        }
+        // Remover feedback após 1.2s
+        setTimeout(() => {
+          if (gameContainer) gameContainer.classList.remove("reloading");
+        }, 1200);
+      });
+    }
+  } catch (e) {
+    console.error("Erro inicializando reloadGameBtn:", e);
+  }
 }
 
 // Mostrar informações do usuário logado
@@ -440,307 +488,7 @@ function getConsecutiveSignalLosses() {
   return count;
 }
 
-// Profit simulator UI updates
-function formatCurrency(value) {
-  try {
-    return Number(value).toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  } catch (e) {
-    return String(value);
-  }
-}
-
-function updateProfitCard() {
-  const betEl = document.getElementById("profitBetAmount");
-  const totalEl = document.getElementById("profitTotalBets");
-  const winsEl = document.getElementById("profitWins");
-  const lossesEl = document.getElementById("profitLosses");
-  const netEl = document.getElementById("profitNet");
-  const perBetEl = document.getElementById("profitPerBet");
-  const roiEl = document.getElementById("profitROI");
-  if (!betEl) return;
-  const bet = parseFloat(betEl.value) || 0;
-  const wins = winCount || 0;
-  const losses = lossCount || 0;
-  const total = wins + losses;
-  const netProfit = (wins - losses) * bet; // payout 1:1
-  const perBet = total > 0 ? netProfit / total : 0;
-  const roi = total > 0 ? (netProfit / (total * bet)) * 100 : 0;
-  if (totalEl) totalEl.textContent = String(total);
-  if (winsEl) winsEl.textContent = String(wins);
-  if (lossesEl) lossesEl.textContent = String(losses);
-  if (netEl)
-    netEl.textContent = bet === 0 ? "-" : `R$ ${formatCurrency(netProfit)}`;
-  if (perBetEl)
-    perBetEl.textContent = bet === 0 ? "-" : `R$ ${formatCurrency(perBet)}`;
-  if (roiEl)
-    roiEl.textContent =
-      total === 0 || bet === 0 ? "-" : `${formatCurrency(roi)}%`;
-  // Also refresh martingale UI if present
-  try {
-    if (typeof updateMartingaleUI === "function") updateMartingaleUI();
-  } catch (e) {}
-}
-
-// MARTINGALE: calculate sequence, cumulative losses, next bet and capital needed
-function calculateMartingaleSequence(initial, losses) {
-  const n = Math.max(1, Math.floor(Number(losses) || 1));
-  const inc = Number(initial) || 0;
-  const seq = [];
-  let cur = inc;
-  for (let i = 0; i < n; i++) {
-    seq.push(cur);
-    cur = cur * 2;
-  }
-  return seq;
-}
-
-function calculateCumulativeLoss(initial, losses) {
-  const seq = calculateMartingaleSequence(initial, losses);
-  return seq.reduce((a, b) => a + b, 0);
-}
-
-function calculateNextBet(initial, losses) {
-  const n = Math.max(1, Math.floor(Number(losses) || 1));
-  const inc = Number(initial) || 0;
-  return inc * Math.pow(2, n);
-}
-
-function calculateCapitalNeeded(initial, losses) {
-  // capital needed includes the future next bet too
-  const cumulative = calculateCumulativeLoss(initial, losses);
-  const nextBet = calculateNextBet(initial, losses);
-  return cumulative + nextBet;
-}
-
-// Ajusta a banca com base no outcome e attemptsUsed (Martingale)
-async function adjustBankrollOnOutcome(outcome, attemptsUsed) {
-  try {
-    const betEl = document.getElementById("profitBetAmount");
-    const bankEl = document.getElementById("profitBankroll");
-    if (!betEl || !bankEl) return;
-    const initial = Number(betEl.value) || 0;
-    let bank = Number(bankEl.value) || 0;
-    const oldBank = bank;
-    // Normalizar outcome
-    const out = (outcome || "").toLowerCase();
-    if (out === "win") {
-      // ganho padrão: recuperar perdas + lucro de 1x aposta inicial => adicionar initial
-      bank = bank + initial;
-    } else if (out === "loss") {
-      const n = Math.max(1, Math.floor(Number(attemptsUsed) || 1));
-      const losses = calculateCumulativeLoss(initial, n);
-      bank = bank - losses;
-    } else {
-      return; // ignorar outcomes desconhecidos
-    }
-    // Atualizar DOM e persistir
-    bankEl.value = Number(bank).toFixed(2);
-    try {
-      localStorage.setItem("profitBankroll", bankEl.value);
-    } catch (e) {}
-    const delta = Number(bank) - Number(oldBank);
-    // if user is authenticated, sync with backend
-    try {
-      const token = localStorage.getItem("token");
-      if (token) {
-        const resp = await fetch(
-          `${API_BASE_URL}/api/auth/user/bankroll/adjust`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ delta: delta }),
-          }
-        );
-        if (resp.ok) {
-          const data = await resp.json();
-          if (data && data.bankroll !== undefined) {
-            bankEl.value = Number(data.bankroll).toFixed(2);
-            try {
-              localStorage.setItem("profitBankroll", bankEl.value);
-            } catch (e) {}
-          }
-        }
-      }
-    } catch (e) {}
-    // Atualizar UI de martingale/coverage
-    try {
-      updateMartingaleUI();
-    } catch (e) {}
-    // highlight visual
-    try {
-      bankEl.classList.add("bank-changed");
-      setTimeout(() => bankEl.classList.remove("bank-changed"), 800);
-    } catch (e) {}
-  } catch (e) {}
-}
-
-function updateMartingaleUI() {
-  const betEl = document.getElementById("profitBetAmount");
-  const streakEl = document.getElementById("martingaleStreak");
-  const sequenceEl = document.getElementById("martingaleSequence");
-  const cumulativeEl = document.getElementById("martingaleCumulativeLoss");
-  const nextEl = document.getElementById("martingaleNextBet");
-  const capitalEl = document.getElementById("martingaleCapitalNeeded");
-  if (!betEl || !streakEl) return;
-  const bet = Number(betEl.value) || 0;
-  const useWL = document.getElementById("useWinsLosses");
-  let losses = Math.max(1, Math.floor(Number(streakEl.value) || 1));
-  if (useWL && useWL.checked) {
-    // use consecutive signal losses (if any), else fallback to manual input
-    const consecutive = getConsecutiveSignalLosses();
-    if (consecutive > 0) {
-      losses = consecutive;
-    }
-  }
-  const seq = calculateMartingaleSequence(bet, losses);
-  const seqText = seq.map((v) => `R$ ${formatCurrency(v)}`).join(" + ");
-  const cumulative = calculateCumulativeLoss(bet, losses);
-  const nextBet = calculateNextBet(bet, losses);
-  const capitalNeeded = calculateCapitalNeeded(bet, losses);
-  if (sequenceEl) sequenceEl.textContent = seqText === "" ? "-" : seqText;
-  if (cumulativeEl)
-    cumulativeEl.textContent = `R$ ${formatCurrency(cumulative)}`;
-  if (nextEl) nextEl.textContent = `R$ ${formatCurrency(nextBet)}`;
-  if (capitalEl) capitalEl.textContent = `R$ ${formatCurrency(capitalNeeded)}`;
-  // Bankroll coverage
-  const bankrollEl = document.getElementById("profitBankroll");
-  const coverageEl = document.getElementById("martingaleCoverage");
-  if (bankrollEl && coverageEl) {
-    const bankroll = Number(bankrollEl.value) || 0;
-    if (bankroll <= 0) {
-      coverageEl.textContent = "Banca não informada";
-      coverageEl.className = "bankroll-status";
-    } else {
-      const ratio = bankroll / capitalNeeded;
-      const percent = Math.round(ratio * 100);
-      coverageEl.textContent = `${percent}% cobertura`;
-      coverageEl.className = `bankroll-status ${
-        ratio >= 1 ? "bankroll-ok" : "bankroll-warning"
-      }`;
-    }
-  }
-  // exibir a contagem atual de perdas consecutivas de sinal
-  try {
-    const streakElDom = document.getElementById("currentSignalLossStreak");
-    if (streakElDom)
-      streakElDom.textContent = String(getConsecutiveSignalLosses());
-  } catch (e) {}
-}
-
-// Bind event to bet input
-document.addEventListener("DOMContentLoaded", () => {
-  // Logout button
-  const logoutBtn = document.getElementById("btnLogout");
-  if (logoutBtn) {
-    logoutBtn.addEventListener("click", logout);
-  }
-
-  const betInput = document.getElementById("profitBetAmount");
-  if (betInput) {
-    betInput.addEventListener("input", () => updateProfitCard());
-  }
-  // initial update
-  updateProfitCard();
-  // bind martingale input if present
-  const mgStreak = document.getElementById("martingaleStreak");
-  if (mgStreak) {
-    mgStreak.addEventListener("input", () => updateMartingaleUI());
-    mgStreak.addEventListener("input", () => {
-      try {
-        localStorage.setItem("martingaleStreak", mgStreak.value);
-      } catch (e) {}
-    });
-  }
-  if (betInput) {
-    betInput.addEventListener("input", () => updateMartingaleUI());
-  }
-  const bankrollInput = document.getElementById("profitBankroll");
-  if (bankrollInput) {
-    bankrollInput.addEventListener("input", () => updateMartingaleUI());
-    bankrollInput.addEventListener("input", () => {
-      try {
-        localStorage.setItem("profitBankroll", bankrollInput.value);
-      } catch (e) {}
-    });
-    bankrollInput.addEventListener("change", async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const val = Number(bankrollInput.value) || 0;
-        if (token) {
-          const resp = await fetch(`${API_BASE_URL}/api/auth/user/bankroll`, {
-            method: "PUT",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ bankroll: val }),
-          });
-          if (resp.ok) {
-            const data = await resp.json();
-            if (data && data.bankroll !== undefined) {
-              bankrollInput.value = Number(data.bankroll).toFixed(2);
-              try {
-                localStorage.setItem("profitBankroll", bankrollInput.value);
-              } catch (e) {}
-              try {
-                updateMartingaleUI();
-              } catch (e) {}
-            }
-          }
-        }
-      } catch (e) {}
-    });
-  }
-  const useWL = document.getElementById("useWinsLosses");
-  if (useWL) {
-    useWL.addEventListener("input", () => updateMartingaleUI());
-    useWL.addEventListener("input", () => {
-      try {
-        localStorage.setItem("useWinsLosses", useWL.checked ? "1" : "0");
-      } catch (e) {}
-    });
-  }
-  // initial martingale update
-  updateMartingaleUI();
-  // restore persisted inputs
-  try {
-    const savedBankroll = localStorage.getItem("profitBankroll");
-    if (savedBankroll && bankrollInput) bankrollInput.value = savedBankroll;
-    const savedStreak = localStorage.getItem("martingaleStreak");
-    if (savedStreak && mgStreak) mgStreak.value = savedStreak;
-    const savedUse = localStorage.getItem("useWinsLosses");
-    if (savedUse && useWL) useWL.checked = savedUse === "1";
-  } catch (e) {}
-  // If user has token, attempt to fetch bankroll from server to sync
-  try {
-    const token = localStorage.getItem("token");
-    const bankrollInputEl = document.getElementById("profitBankroll");
-    if (token && bankrollInputEl) {
-      fetch(`${API_BASE_URL}/api/auth/user/bankroll`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then((r) => r.json())
-        .then((data) => {
-          if (data && data.bankroll !== undefined) {
-            bankrollInputEl.value = Number(data.bankroll).toFixed(2);
-            try {
-              localStorage.setItem("profitBankroll", bankrollInputEl.value);
-            } catch (e) {}
-            try {
-              updateMartingaleUI();
-            } catch (e) {}
-          }
-        })
-        .catch((er) => {});
-    }
-  } catch (e) {}
-});
+// Profit simulator removed: UI and logic for the profit/martingale card were removed.
 
 // Debug helpers: add counts manually from UI
 // Debug functions removed to avoid UI debug buttons in production
@@ -823,13 +571,9 @@ function updateWinLossCounts(outcome, signalId, resolvedAt = null) {
   if (winsEl) winsEl.textContent = String(winCount);
   if (lossesEl) lossesEl.textContent = String(lossCount);
 
-  // Atualizar profit card caso esteja visível
+  // Atualizar profit card caso esteja visível (simulador removido)
   try {
     if (typeof updateProfitCard === "function") updateProfitCard();
-  } catch (e) {}
-  // Ajustar a banca com base no outcome / tentativas
-  try {
-    adjustBankrollOnOutcome(outcome, attemptsUsed);
   } catch (e) {}
 }
 
@@ -1470,10 +1214,14 @@ setInterval(async () => {
 }, 5000);
 
 // Configurações de Alertas
-document.getElementById("btnSettings").addEventListener("click", () => {
-  loadUserPreferences();
-  document.getElementById("settingsModal").style.display = "block";
-});
+const _btnSettings = document.getElementById("btnSettings");
+if (_btnSettings) {
+  _btnSettings.addEventListener("click", () => {
+    loadUserPreferences();
+    const modal = document.getElementById("settingsModal");
+    if (modal) modal.style.display = "block";
+  });
+}
 
 document.getElementById("closeSettings").addEventListener("click", () => {
   document.getElementById("settingsModal").style.display = "none";

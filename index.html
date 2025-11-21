@@ -10,7 +10,13 @@
     <div class="container">
       <!-- Header -->
       <header class="header">
-        <h1>🎯 DBcolor - Análise Double</h1>
+        <h1>
+          DBcolor - Análise Double
+          <span
+            id="headerSquare"
+            class="header-square"
+            title="Estado do quadrado"></span>
+        </h1>
         <div class="header-right">
           <div class="user-info" id="userInfo" style="display: none">
             <div class="user-details">
@@ -18,7 +24,6 @@
               <span id="userBankroll"></span>
             </div>
             <div class="user-actions">
-              <button id="btnSettings" class="settings-btn">⚙️ Config</button>
               <button id="btnLogout" class="logout-btn">Logout</button>
             </div>
           </div>
@@ -67,6 +72,11 @@
       <section class="game-section">
         <div class="game-container">
           <!-- Some casinos block embedding via X-Frame-Options; add a fallback link below -->
+          <div class="game-controls">
+            <button id="reloadGameBtn" class="reload-btn">
+              Recarregar jogo
+            </button>
+          </div>
           <iframe
             id="playnaIframe"
             src="https://playnabets.com/casino/soline/mobi_Dobrar"
@@ -160,99 +170,7 @@
         </div>
       </section>
 
-      <!-- Profit simulator: calculate expected profit based on wins/losses -->
-      <section class="profit-section">
-        <h2>Simulador de Ganhos</h2>
-        <div class="profit-card">
-          <div class="profit-input">
-            <label for="profitBetAmount"
-              ><strong>Valor da Aposta:</strong></label
-            >
-            <input
-              id="profitBetAmount"
-              type="number"
-              min="0"
-              step="0.01"
-              value="10" />
-          </div>
-          <div class="martingale-simulator">
-            <div class="martingale-row">
-              <label for="martingaleStreak"
-                ><strong>Perdas consecutivas:</strong></label
-              >
-              <input
-                id="martingaleStreak"
-                type="number"
-                min="1"
-                max="10"
-                value="3" />
-            </div>
-            <div class="martingale-row">
-              <label
-                for="useWinsLosses"
-                title="Use as resoluções reais (WIN/LOSS) para calcular perda acumulada e próxima aposta"
-                ><strong>Baseado em Wins/Losses:</strong></label
-              >
-              <input id="useWinsLosses" type="checkbox" checked />
-            </div>
-            <div class="martingale-row">
-              <label for="profitBankroll"><strong>Minha banca:</strong></label>
-              <input
-                id="profitBankroll"
-                type="number"
-                min="0"
-                step="0.01"
-                value="1000" />
-            </div>
-            <div class="martingale-results">
-              <div class="martingale-row">
-                <span>Sequência:</span> <span id="martingaleSequence">-</span>
-              </div>
-              <div class="martingale-row">
-                <span>Perda acumulada:</span>
-                <span id="martingaleCumulativeLoss">-</span>
-              </div>
-              <div class="martingale-row">
-                <span>Próxima aposta:</span>
-                <span id="martingaleNextBet">-</span>
-              </div>
-              <div class="martingale-row">
-                <span>Capital necessário:</span>
-                <span id="martingaleCapitalNeeded">-</span>
-              </div>
-              <div class="martingale-row">
-                <span>Cobertura da banca:</span>
-                <span id="martingaleCoverage" class="bankroll-status">-</span>
-              </div>
-              <div class="martingale-row">
-                <span>Perdas de sinal consecutivas:</span>
-                <span id="currentSignalLossStreak">0</span>
-              </div>
-            </div>
-          </div>
-          <div class="profit-results" id="profitResults">
-            <div class="profit-row">
-              <span>Total de Apostas:</span> <span id="profitTotalBets">0</span>
-            </div>
-            <div class="profit-row">
-              <span>Wins:</span> <span id="profitWins">0</span>
-            </div>
-            <div class="profit-row">
-              <span>Loss:</span> <span id="profitLosses">0</span>
-            </div>
-            <div class="profit-row">
-              <span>Lucro Líquido:</span> <span id="profitNet">-</span>
-            </div>
-            <div class="profit-row">
-              <span>Lucro por Aposta (EV):</span>
-              <span id="profitPerBet">-</span>
-            </div>
-            <div class="profit-row">
-              <span>ROI:</span> <span id="profitROI">-</span>
-            </div>
-          </div>
-        </div>
-      </section>
+      <!-- Profit simulator removed -->
 
       <!-- Debug controls (removed) -->
 

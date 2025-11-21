@@ -90,9 +90,29 @@ body {
 }
 
 .header h1::after {
-  content: "⚡";
-  margin-left: 10px;
-  animation: pulse 2s ease-in-out infinite;
+  /* removido: substituído por elemento DOM .header-square */
+  content: "";
+}
+
+/* Quadrado no header que troca entre vermelho e preto */
+.header-square {
+  display: inline-block;
+  width: 30px; /* aumentado */
+  height: 30px; /* aumentado */
+  margin-left: 8px; /* mais próximo do título */
+  border-radius: 6px;
+  border: 2px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  vertical-align: middle;
+  cursor: pointer;
+  transition: background-color 0.18s ease, transform 0.12s ease;
+  background-color: var(--accent-red);
+}
+.header-square.black {
+  background-color: var(--accent-black);
+}
+.header-square:active {
+  transform: scale(0.96);
 }
 
 .header-right {
@@ -323,6 +343,34 @@ body {
 
   .header-right {
     gap: 10px;
+  }
+}
+
+/* Ajustes mobile para user-info */
+@media (max-width: 480px) {
+  .user-info {
+    width: 100%;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .user-details {
+    text-align: center;
+  }
+  .user-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    align-items: center;
+  }
+  .user-actions .logout-btn {
+    width: 90%;
+    max-width: 220px;
+    padding: 12px 16px;
+    font-size: 1rem;
   }
 }
 
@@ -714,6 +762,40 @@ body {
   border: 1px solid var(--border-color);
   box-shadow: var(--shadow);
 }
+.game-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+.reload-btn {
+  background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(46, 125, 50, 0.25);
+}
+.reload-btn:active {
+  transform: translateY(1px);
+}
+.game-container.reloading {
+  outline: 3px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.02) inset;
+}
+@media (max-width: 480px) {
+  .game-controls {
+    justify-content: center;
+  }
+  .reload-btn {
+    width: 90%;
+    max-width: 340px;
+    padding: 12px;
+    font-size: 1rem;
+  }
+}
 
 .game-container iframe {
   width: 100%;
@@ -827,132 +909,7 @@ body {
   font-size: 1rem;
 }
 
-/* Profit simulator */
-.profit-section {
-  margin-bottom: 30px;
-}
-.profit-card {
-  background: var(--bg-card);
-  padding: 20px;
-  border-radius: 12px;
-  border: 1px solid var(--border-color);
-  display: grid;
-  grid-template-columns: repeat(2, minmax(280px, 1fr));
-  gap: 16px;
-  align-items: start;
-  font-size: 1rem;
-  width: 100%;
-  max-width: 100%;
-}
-.profit-input {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-.profit-input input {
-  width: 120px;
-  padding: 8px;
-  border-radius: 6px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.martingale-simulator {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: flex-start;
-}
-.martingale-row {
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-  align-items: center;
-  gap: 8px;
-}
-.martingale-row label {
-  color: var(--text-secondary);
-  font-weight: 600;
-  font-size: 0.9rem;
-}
-.martingale-row input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-}
-.martingale-row #currentSignalLossStreak {
-  color: var(--accent-red);
-  font-weight: 800;
-}
-.bank-changed {
-  transition: box-shadow 0.25s ease, transform 0.25s ease;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
-  transform: scale(1.02);
-}
-.martingale-row input {
-  width: 100px;
-  padding: 6px;
-  font-size: 0.9rem;
-}
-.martingale-row input#profitBankroll {
-  width: 110px; /* larger to allow more digits */
-}
-.bankroll-status {
-  display: inline-block;
-  padding: 4px 8px;
-  border-radius: 8px;
-  font-weight: 700;
-  font-size: 0.9rem;
-}
-.bankroll-ok {
-  background: rgba(0, 255, 136, 0.08);
-  color: var(--accent-green);
-  border: 1px solid rgba(0, 255, 136, 0.12);
-}
-.bankroll-warning {
-  background: rgba(255, 68, 68, 0.06);
-  color: var(--accent-red);
-  border: 1px solid rgba(255, 68, 68, 0.12);
-}
-.martingale-results {
-  display: grid;
-  gap: 6px;
-  width: 100%;
-}
-.martingale-results span {
-  color: var(--text-secondary);
-}
-.martingale-results span:last-child {
-  color: var(--text-primary);
-  font-weight: 700;
-}
-.profit-results {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.profit-row {
-  display: flex;
-  justify-content: space-between;
-  color: var(--text-secondary);
-}
-.profit-row span:last-child {
-  color: var(--text-primary);
-  font-weight: 700;
-}
-/* smaller text for a more compact card */
-.profit-row span {
-  font-size: 0.9rem;
-}
-
-@media (max-width: 600px) {
-  .profit-card {
-    grid-template-columns: 1fr;
-  }
-  .profit-input {
-    justify-content: space-between;
-  }
-}
+/* Profit simulator removed */
 
 /* .btn debug styles were removed; no permanent UI buttons required */
 
