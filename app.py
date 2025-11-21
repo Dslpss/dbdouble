@@ -70,6 +70,79 @@ event_clients: List[asyncio.Queue] = []
 # Martingale: bets pending (signals still being verified for win/loss)
 pending_bets: List[Dict] = []
 
+# Cooldown (server-side)
+COOLDOWN_BASIC = 7
+COOLDOWN_AFTER_LOSS = 12
+STOP_AFTER_3_LOSSES = 20
+MIN_COOLDOWN_AFTER_WIN = 3
+GLOBAL_WINDOW_ROUNDS = 50
+GLOBAL_MAX_ALERTS = 3
+
+cooldown_contador = 0
+perdas_consecutivas = 0
+modo_stop = False
+stop_counter = 0
+modo_conservador = False
+historico_alertas: List[Dict] = []
+round_index = 0
+
+def decrementar_cooldown():
+    global modo_stop, stop_counter, cooldown_contador, perdas_consecutivas
+    if modo_stop:
+        stop_counter = max(0, stop_counter - 1)
+        if stop_counter == 0:
+            modo_stop = False
+            perdas_consecutivas = 0
+        return
+    if cooldown_contador > 0:
+        cooldown_contador = max(0, cooldown_contador - 1)
+
+def ativar_cooldown(tipo: str):
+    global cooldown_contador, modo_conservador, modo_stop, stop_counter
+    if tipo == "basico":
+        cooldown_contador = COOLDOWN_BASIC
+    elif tipo == "perda":
+        cooldown_contador = COOLDOWN_AFTER_LOSS
+        modo_conservador = True
+    elif tipo == "stop":
+        modo_stop = True
+        stop_counter = STOP_AFTER_3_LOSSES
+        cooldown_contador = 0
+
+def verificar_cooldown() -> bool:
+    return (not modo_stop) and cooldown_contador == 0
+
+def registrar_alerta():
+    global historico_alertas
+    historico_alertas.append({"ts": int(time.time() * 1000), "round": round_index})
+    if len(historico_alertas) > 200:
+        historico_alertas = historico_alertas[-200:]
+
+def contar_alertas_na_janela() -> int:
+    min_round = max(0, round_index - GLOBAL_WINDOW_ROUNDS + 1)
+    return len([a for a in historico_alertas if a.get("round", 0) >= min_round])
+
+def pode_emitir_alerta() -> bool:
+    if modo_stop:
+        return False
+    if cooldown_contador > 0:
+        return False
+    if contar_alertas_na_janela() >= GLOBAL_MAX_ALERTS:
+        return False
+    return True
+
+def registrar_resultado(acertou: bool):
+    global cooldown_contador, perdas_consecutivas, modo_conservador
+    if acertou:
+        cooldown_contador = max(MIN_COOLDOWN_AFTER_WIN, cooldown_contador // 2)
+        perdas_consecutivas = 0
+        modo_conservador = False
+    else:
+        perdas_consecutivas += 1
+        ativar_cooldown("perda")
+        if perdas_consecutivas >= 3:
+            ativar_cooldown("stop")
+
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     """Página principal da interface - requer autenticação"""
@@ -290,6 +363,9 @@ def on_message(data: Dict):
     # Processar resultado do Double
     parsed = parse_double_payload(data)
     if parsed:
+        global round_index
+        round_index = round_index + 1
+        decrementar_cooldown()
         # Evitar duplicatas
         if results_history:
             last = results_history[-1]
@@ -351,6 +427,7 @@ def on_message(data: Dict):
                             online_update_platt(raw_score, 1)
                         except Exception:
                             pass
+                        registrar_resultado(True)
                         # Enviar SSE informando o resultado
                         bet_payload = {"type": "bet_result", "data": pb}
                         bet_message = f"event: bet_result\ndata: {json.dumps(bet_payload)}\n\n"
@@ -375,6 +452,7 @@ def on_message(data: Dict):
                                 online_update_platt(raw_score, 0)
                             except Exception:
                                 pass
+                            registrar_resultado(False)
                             bet_payload = {"type": "bet_result", "data": pb}
                             bet_message = f"event: bet_result\ndata: {json.dumps(bet_payload)}\n\n"
                             for queue in event_clients:
@@ -453,6 +531,14 @@ def on_message(data: Dict):
                     if not signal:
                         signal = detect_best_double_signal(results_history)
                 if signal:
+                    if not pode_emitir_alerta():
+                        if modo_stop:
+                            print(f"[COOLDOWN] Stop temporário ativo ({stop_counter} rodadas restantes)")
+                        elif cooldown_contador > 0:
+                            print(f"[COOLDOWN] Padrão detectado mas cooldown ativo ({cooldown_contador} rodadas restantes)")
+                        else:
+                            print(f"[COOLDOWN] Limite global atingido ({GLOBAL_MAX_ALERTS}/{GLOBAL_WINDOW_ROUNDS}) — alerta suprimido")
+                        return
                     # Antes de enviar a notificação, criar pendente para martingale (se ativado)
                     pb_id = None
                     try:
@@ -469,6 +555,8 @@ def on_message(data: Dict):
                             queue.put_nowait(signal_message)
                         except:
                             pass
+                    registrar_alerta()
+                    ativar_cooldown("basico")
                     # Se martingale ativado, anexar pendente
                     try:
                         if CONFIG.MARTINGALE_ENABLED:

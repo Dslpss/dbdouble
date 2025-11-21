@@ -34,6 +34,166 @@ let recentResolutions = []; // { id, color, outcome, ts }
 let signalOutcomeHistory = []; // { outcome: 'win'|'loss', ts }
 const RESOLUTION_DEDUP_WINDOW_MS = 8000; // 8 segundos
 
+// -----------------------------
+// Cooldown system for alerts
+// -----------------------------
+// Configuráveis
+const COOLDOWN_BASIC = 7; // rodadas básicas após emitir um alerta
+const COOLDOWN_AFTER_LOSS = 12; // rodadas após perda
+const STOP_AFTER_3_LOSSES = 20; // stop temporário após 3 perdas consecutivas
+const MIN_COOLDOWN_AFTER_WIN = 3; // mínimo após reduzir pela metade
+const GLOBAL_WINDOW_ROUNDS = 50; // janela global (rodadas)
+const GLOBAL_MAX_ALERTS = 3; // máximo alertas por janela global
+// Quanto tempo (ms) mostrar WIN/LOSS no card antes de voltar ao estado de busca
+const SIGNAL_RESOLUTION_DISPLAY_MS = 5000;
+
+// Estado do cooldown
+let cooldown_contador = 0;
+let perdas_consecutivas = 0;
+let modo_stop = false;
+let stop_counter = 0; // contador quando em modo stop
+let modo_conservador = false;
+let historico_alertas = []; // { ts: number, round: number }
+let roundIndex = 0; // contador de rodadas incrementado a cada novo resultado
+// ids de sinais que foram apenas exibidos como "suprimidos" (não ativos)
+let suppressedSignalUiIds = new Set();
+// ids vindas do backend que foram suprimidas (para ignorar futuras resoluções)
+let suppressedSignalIds = new Set();
+// Signatures de sinais suprimidos quando não há um id backend confiável
+let suppressedSignatures = []; // { color, round, ts, backendId? }
+
+function registerSuppressedSignature(color, backendId = null) {
+  try {
+    suppressedSignatures.push({
+      color,
+      round: roundIndex,
+      ts: Date.now(),
+      backendId,
+    });
+    // manter apenas últimas 200 assinaturas para memória
+    if (suppressedSignatures.length > 200)
+      suppressedSignatures = suppressedSignatures.slice(-200);
+  } catch (e) {}
+}
+
+function consumeMatchingSuppressedSignature(signalUiId, color) {
+  try {
+    const now = Date.now();
+    for (let i = 0; i < suppressedSignatures.length; i++) {
+      const s = suppressedSignatures[i];
+      // se tiver backendId e coincidir com signalUiId -> consumir
+      if (s.backendId && signalUiId && s.backendId === signalUiId) {
+        suppressedSignatures.splice(i, 1);
+        return true;
+      }
+      // senão, se cor coincidir e estiver dentro de prazo (3 rodadas ou 10s), consumir
+      if (color && s.color === color) {
+        if (
+          Math.abs((roundIndex || 0) - (s.round || 0)) <= 3 ||
+          now - (s.ts || 0) <= 10000
+        ) {
+          suppressedSignatures.splice(i, 1);
+          return true;
+        }
+      }
+    }
+  } catch (e) {}
+  return false;
+}
+
+// Deve ser chamada a cada nova rodada
+function decrementar_cooldown() {
+  // decrementar stop se ativo
+  if (modo_stop) {
+    stop_counter = Math.max(0, stop_counter - 1);
+    if (stop_counter === 0) {
+      modo_stop = false;
+      perdas_consecutivas = 0; // reset após stop
+      console.log("Cooldown: stop terminado, retomando detecção");
+    }
+    return;
+  }
+
+  if (cooldown_contador > 0) {
+    cooldown_contador = Math.max(0, cooldown_contador - 1);
+  }
+}
+
+function ativar_cooldown(tipo) {
+  if (tipo === "basico") {
+    cooldown_contador = COOLDOWN_BASIC;
+  } else if (tipo === "perda") {
+    cooldown_contador = COOLDOWN_AFTER_LOSS;
+    modo_conservador = true;
+  } else if (tipo === "stop") {
+    modo_stop = true;
+    stop_counter = STOP_AFTER_3_LOSSES;
+    cooldown_contador = 0; // stop tem prioridade
+  }
+}
+
+function verificar_cooldown() {
+  return !modo_stop && cooldown_contador === 0;
+}
+
+function registrar_alerta() {
+  const ts = Date.now();
+  historico_alertas.push({ ts: ts, round: roundIndex });
+  // manter apenas últimos 50 registros
+  if (historico_alertas.length > 100) {
+    historico_alertas = historico_alertas.slice(-100);
+  }
+}
+
+function contar_alertas_na_janela() {
+  // contar alertas nos últimos GLOBAL_WINDOW_ROUNDS rodadas
+  const minRound = Math.max(0, roundIndex - GLOBAL_WINDOW_ROUNDS + 1);
+  return historico_alertas.filter((a) => a.round >= minRound).length;
+}
+
+function pode_emitir_alerta() {
+  // se em stop, não pode
+  if (modo_stop) return false;
+  // verificar cooldown atual
+  if (cooldown_contador > 0) return false;
+  // verificar limite global (3 alertas por 50 rodadas)
+  const count = contar_alertas_na_janela();
+  if (count >= GLOBAL_MAX_ALERTS) return false;
+  return true;
+}
+
+// registrar resultado de um sinal (chamar após resolver: win -> true, loss -> false)
+function registrar_resultado(acertou) {
+  if (acertou) {
+    // reduzir cooldown pela metade (mínimo MIN_COOLDOWN_AFTER_WIN)
+    cooldown_contador = Math.max(
+      MIN_COOLDOWN_AFTER_WIN,
+      Math.floor(cooldown_contador / 2)
+    );
+    perdas_consecutivas = 0;
+    modo_conservador = false;
+  } else {
+    perdas_consecutivas += 1;
+    // estender cooldown por perda
+    ativar_cooldown("perda");
+    // se 3 perdas consecutivas, ativar stop
+    if (perdas_consecutivas >= 3) {
+      ativar_cooldown("stop");
+      console.log(
+        "Cooldown: stop temporário ativado por 3 perdas consecutivas"
+      );
+    }
+  }
+}
+
+function log_cooldown_status() {
+  console.log(
+    `Cooldown status -> contador=${cooldown_contador}, stop=${modo_stop}(${stop_counter}), perdas_consecutivas=${perdas_consecutivas}, historico_alertas=${historico_alertas.length}`
+  );
+}
+
+// -----------------------------
+
 // Inicialização
 // Ensure user is authenticated before loading the app. If user is not authenticated,
 // redirect to /auth, otherwise continue with initialization.
@@ -290,6 +450,11 @@ function updateConnectionStatus(connected) {
 
 // Processar novo resultado
 function handleNewResult(data) {
+  // Nova rodada recebida -> incrementar índice de rodada e decrementar cooldowns
+  try {
+    roundIndex = (roundIndex || 0) + 1;
+    decrementar_cooldown();
+  } catch (e) {}
   // Adicionar resultado
   results.unshift(data);
 
@@ -326,7 +491,55 @@ function evaluatePendingSignals(newResult) {
       (newResult && newResult.color === p.expectedColor) ||
       (p.protect_white && newResult.color === "white")
     ) {
-      // Win
+      const signalUiId = p.id;
+      const color = p.expectedColor;
+      if (
+        signalUiId &&
+        (suppressedSignalUiIds.has(signalUiId) ||
+          suppressedSignalIds.has(signalUiId))
+      ) {
+        console.log(
+          `[updateHistoryWithOutcome] Ignorando resolução do sinal suprimido ${signalUiId}`
+        );
+        // Remover das listas de suprimidos para liberar memória
+        suppressedSignalUiIds.delete(signalUiId);
+        suppressedSignalIds.delete(signalUiId);
+        return;
+      }
+      // Se o signalUiId corresponde a um sinal atualmente exibido ou a um pendingSignal,
+      // não tentar casar por assinatura: esse é um sinal visível e deve ser contabilizado.
+      let isVisibleSignal = false;
+      try {
+        if (signalUiId) {
+          if (
+            pendingSignals &&
+            pendingSignals.find((p) => p.id === signalUiId)
+          ) {
+            isVisibleSignal = true;
+          }
+          if (
+            currentActiveSignal &&
+            (currentActiveSignal._uiId === signalUiId ||
+              currentActiveSignal.id === signalUiId)
+          ) {
+            isVisibleSignal = true;
+          }
+        }
+      } catch (e) {}
+
+      if (!isVisibleSignal) {
+        // Se não veio id, ou id não estiver nas listas, tentar casar por assinatura (cor/rodada/tempo)
+        const matchedBySignature = consumeMatchingSuppressedSignature(
+          signalUiId,
+          color
+        );
+        if (matchedBySignature) {
+          console.log(
+            `[updateHistoryWithOutcome] Ignorando resolução por assinatura suprimida (color=${color}, id=${signalUiId})`
+          );
+          return;
+        }
+      }
       p.resolved = true;
       updateHistoryWithOutcome(
         p.id,
@@ -374,6 +587,22 @@ function updateHistoryWithOutcome(
   resolvedAt = null,
   color = null
 ) {
+  // Ignorar resoluções referentes a sinais que foram apenas exibidos como "suprimidos"
+  try {
+    if (
+      signalUiId &&
+      (suppressedSignalUiIds.has(signalUiId) ||
+        suppressedSignalIds.has(signalUiId))
+    ) {
+      console.log(
+        `[updateHistoryWithOutcome] Ignorando resolução do sinal suprimido ${signalUiId}`
+      );
+      // Remover das listas de suprimidos para liberar memória
+      suppressedSignalUiIds.delete(signalUiId);
+      suppressedSignalIds.delete(signalUiId);
+      return;
+    }
+  } catch (e) {}
   // Histórico foi removido da interface. Registrar resolução no console e atualizar estado.
   console.log(
     `Signal ${signalUiId} resolved as ${outcome.toUpperCase()} after ${attemptsUsed} attempt(s)`
@@ -393,6 +622,12 @@ function updateHistoryWithOutcome(
   // registrar também no histórico de resultados de sinal (para sequências win/loss)
   try {
     addSignalOutcome(outcome);
+  } catch (e) {}
+  // Atualizar sistema de cooldown com base no resultado do sinal
+  try {
+    const acertou = (outcome || "").toString().toLowerCase() === "win";
+    registrar_resultado(acertou);
+    log_cooldown_status();
   } catch (e) {}
   // Atualizar o simulador martingale (agora com os dados do wins/losses)
   try {
@@ -614,6 +849,41 @@ function showSignalResolutionOnCard(outcome, attemptsUsed) {
     currentActiveSignal.resolution = outcome;
     currentActiveSignal.attemptsUsed = attemptsUsed;
   }
+  // Agendar retorno ao estado de busca após mostrar WIN/LOSS por um tempo configurável
+  try {
+    const resolvedSignalRef = currentActiveSignal;
+    setTimeout(() => {
+      try {
+        // Só limpar se o mesmo sinal ainda for o atual (evitar sobrescrever novo sinal)
+        if (
+          currentActiveSignal &&
+          resolvedSignalRef &&
+          currentActiveSignal === resolvedSignalRef
+        ) {
+          // limpar estilos visuais do card
+          try {
+            const card = document.getElementById("signalCard");
+            const badge = document.getElementById("signalBadge");
+            const pendingStatusEl = document.getElementById(
+              "signalPendingStatus"
+            );
+            if (badge) {
+              badge.classList.remove("win", "loss");
+            }
+            if (card) {
+              card.style.borderColor = "";
+              card.style.boxShadow = "";
+            }
+            if (pendingStatusEl) pendingStatusEl.style.display = "none";
+          } catch (e) {}
+          // permitir que setSearchingState sobrescreva
+          signalJustResolved = false;
+          currentActiveSignal = null;
+          setSearchingState();
+        }
+      } catch (e) {}
+    }, SIGNAL_RESOLUTION_DISPLAY_MS);
+  } catch (e) {}
 }
 
 // Limpar sinal atual da UI (opcional: chamar manualmente ou após timeout)
@@ -767,7 +1037,24 @@ function checkForSignals() {
   // detectSignal já exige pelo menos 3 resultados internamente
   const signal = detectSignal();
   if (signal) {
-    displaySignal(signal);
+    // Checar cooldown e limite global antes de emitir
+    if (pode_emitir_alerta()) {
+      displaySignal(signal);
+      // Registrar alerta no histórico e ativar cooldown básico
+      registrar_alerta();
+      ativar_cooldown("basico");
+      log_cooldown_status();
+    } else {
+      const expectedColor = signal.suggestedBet ? signal.suggestedBet.color : null;
+      registerSuppressedSignature(expectedColor, null);
+      if (modo_stop) {
+        console.log(`Stop temporário ativo (${stop_counter} rodadas restantes)`);
+      } else if (cooldown_contador > 0) {
+        console.log(`Padrão detectado mas cooldown ativo (${cooldown_contador} rodadas restantes)`);
+      } else {
+        console.log(`Limite global atingido (${GLOBAL_MAX_ALERTS}/${GLOBAL_WINDOW_ROUNDS}) — sinal suprimido`);
+      }
+    }
   }
 }
 
@@ -797,13 +1084,35 @@ function handleBackendSignal(signalData) {
       : "~60%",
     reasons: signalData.reasons || [],
   };
+  // Antes de exibir, checar cooldown/pendências
+  if (pode_emitir_alerta()) {
+    displaySignal(signal);
+    registrar_alerta();
+    ativar_cooldown("basico");
+    log_cooldown_status();
 
-  displaySignal(signal);
-  // mark current signal as pending (if it has id)
-  currentPendingSignalId = signalData.id || null;
-  const pendingStatusEl = document.getElementById("signalPendingStatus");
-  if (currentPendingSignalId && pendingStatusEl) {
-    pendingStatusEl.style.display = "block";
+    // mark current signal as pending (if it has id)
+    currentPendingSignalId = signalData.id || null;
+    const pendingStatusEl = document.getElementById("signalPendingStatus");
+    if (currentPendingSignalId && pendingStatusEl) {
+      pendingStatusEl.style.display = "block";
+    }
+  } else {
+    // Não exibir UI; marcar id do backend como suprimido para ignorar resoluções futuras
+    const backendId = signalData.id || null;
+    if (backendId) {
+      suppressedSignalIds.add(backendId);
+      // registrar assinatura também por cor/rodada para casos onde a resolução venha sem o mesmo id
+      const expectedColor = signal.suggestedBet
+        ? signal.suggestedBet.color
+        : null;
+      registerSuppressedSignature(expectedColor, backendId);
+      console.log(
+        `[DBG] Sinal backend id=${backendId} suprimido por cooldown/limite (registrado para ignorar resoluções).`
+      );
+    } else {
+      console.log(`[DBG] Sinal backend suprimido (sem id disponível).`);
+    }
   }
 }
 
@@ -903,7 +1212,8 @@ function detectSignal() {
 }
 
 // Exibir sinal
-function displaySignal(signal) {
+function displaySignal(signal, options = {}) {
+  const suppressed = options.suppressed === true;
   const section = document.getElementById("signalSection");
   const card = document.getElementById("signalCard");
 
@@ -917,10 +1227,11 @@ function displaySignal(signal) {
   card.style.borderColor = colors[signal.type] || "#00ff88";
   card.style.boxShadow = `0 0 30px ${colors[signal.type] || "#00ff88"}40`;
 
-  document.getElementById("signalBadge").textContent = signal.type.replace(
-    "_",
-    " "
-  );
+  // Badge text: se suprimido, marcar como SUPRIMIDO
+  const badgeText = suppressed
+    ? `${signal.type.replace("_", " ")} (SUPRIMIDO)`
+    : signal.type.replace("_", " ");
+  document.getElementById("signalBadge").textContent = badgeText;
   document.getElementById(
     "signalConfidence"
   ).textContent = `Confiança: ${signal.confidence}/10`;
@@ -1006,16 +1317,21 @@ function displaySignal(signal) {
     if (betGroup) betGroup.appendChild(protectBadge);
   }
 
-  // Tocar som de alerta
+  // Tocar som de alerta (somente se não for suprimido)
   try {
-    const audio = document.getElementById("signalAlertSound");
-    if (audio) {
-      audio.currentTime = 0;
-      audio
-        .play()
-        .catch((e) =>
-          console.log("Audio play failed (user interaction needed first?):", e)
-        );
+    if (!suppressed) {
+      const audio = document.getElementById("signalAlertSound");
+      if (audio) {
+        audio.currentTime = 0;
+        audio
+          .play()
+          .catch((e) =>
+            console.log(
+              "Audio play failed (user interaction needed first?):",
+              e
+            )
+          );
+      }
     }
   } catch (e) {
     console.error("Error playing sound:", e);
@@ -1057,28 +1373,37 @@ function displaySignal(signal) {
   const uiId =
     signal.id || `ui-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   signal._uiId = uiId;
-  // Marcar sinal como atual na UI (será preservado até remoção manual ou nova atribuição)
-  currentActiveSignal = signal;
+  // Se o sinal foi apenas suprimido, marcamos seu uiId para que
+  // futuras resoluções (vindas do backend) sejam ignoradas.
+  if (suppressed) {
+    suppressedSignalUiIds.add(uiId);
+  } else {
+    // Marcar sinal como atual na UI (será preservado até remoção manual ou nova atribuição)
+    currentActiveSignal = signal;
+  }
 
   // Registrar sinal pendente para avaliação automática nas próximas rodadas
+  // Somente se não for suprimido (suprimidos não criam pendingSignals)
   try {
-    const expectedColor = signal.suggestedBet
-      ? signal.suggestedBet.color
-      : null;
-    if (expectedColor) {
-      pendingSignals.push({
-        id: uiId,
-        expectedColor: expectedColor,
-        evaluatedRounds: 0,
-        maxAttempts: 3,
-        resolved: false,
-        attemptsUsed: 0,
-        protect_white: signal.suggestedBet
-          ? signal.suggestedBet.protect_white
-          : false,
-      });
-      // Mostrar indicador de pendência
-      updatePendingStatusUI();
+    if (!suppressed) {
+      const expectedColor = signal.suggestedBet
+        ? signal.suggestedBet.color
+        : null;
+      if (expectedColor) {
+        pendingSignals.push({
+          id: uiId,
+          expectedColor: expectedColor,
+          evaluatedRounds: 0,
+          maxAttempts: 3,
+          resolved: false,
+          attemptsUsed: 0,
+          protect_white: signal.suggestedBet
+            ? signal.suggestedBet.protect_white
+            : false,
+        });
+        // Mostrar indicador de pendência
+        updatePendingStatusUI();
+      }
     }
   } catch (e) {
     // noop
