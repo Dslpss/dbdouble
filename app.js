@@ -867,6 +867,7 @@ function showSignalResolutionOnCard(outcome, attemptsUsed) {
             const pendingStatusEl = document.getElementById(
               "signalPendingStatus"
             );
+            const existingProtect = document.getElementById("protectWhiteBadge");
             if (badge) {
               badge.classList.remove("win", "loss");
             }
@@ -875,6 +876,7 @@ function showSignalResolutionOnCard(outcome, attemptsUsed) {
               card.style.boxShadow = "";
             }
             if (pendingStatusEl) pendingStatusEl.style.display = "none";
+            if (existingProtect) existingProtect.remove();
           } catch (e) {}
           // permitir que setSearchingState sobrescreva
           signalJustResolved = false;
@@ -996,6 +998,10 @@ function setSearchingState() {
   if (numbersEl) numbersEl.textContent = "";
   if (probEl) probEl.textContent = "";
   if (reasonsEl) reasonsEl.innerHTML = "";
+  try {
+    const existingProtect = document.getElementById("protectWhiteBadge");
+    if (existingProtect) existingProtect.remove();
+  } catch (e) {}
   // A sugestão numérica foi removida do card — nada a mostrar aqui
   if (pendingStatusEl) pendingStatusEl.style.display = "none";
   // Esconder quadrado de cor quando estiver buscando
@@ -1307,7 +1313,7 @@ function displaySignal(signal, options = {}) {
   const existingProtect = document.getElementById("protectWhiteBadge");
   if (existingProtect) existingProtect.remove();
 
-  if (protectWhite) {
+  if (!suppressed && protectWhite) {
     const protectBadge = document.createElement("span");
     protectBadge.id = "protectWhiteBadge";
     protectBadge.className = "protect-white-badge";
