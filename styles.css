@@ -926,6 +926,15 @@ body {
   gap: 15px;
 }
 
+.results-scroll-container {
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-card);
+}
+
 .result-item {
   aspect-ratio: 1;
   display: flex;
@@ -1072,6 +1081,10 @@ body {
 
   .results-grid {
     grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  }
+
+  .results-scroll-container {
+    max-height: 320px;
   }
 
   .signal-card {
