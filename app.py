@@ -85,6 +85,14 @@ stop_counter = 0
 modo_conservador = False
 historico_alertas: List[Dict] = []
 round_index = 0
+signal_stats = {
+    "alta": {"total": 0, "acertos": 0, "taxa": 0.0},
+    "media": {"total": 0, "acertos": 0, "taxa": 0.0},
+    "baixa": {"total": 0, "acertos": 0, "taxa": 0.0},
+    "geral": {"total": 0, "acertos": 0, "taxa": 0.0}
+}
+sinais_perdidos_por_pausa = 0
+compensation_remaining = 0
 
 def decrementar_cooldown():
     global modo_stop, stop_counter, cooldown_contador, perdas_consecutivas
@@ -93,6 +101,12 @@ def decrementar_cooldown():
         if stop_counter == 0:
             modo_stop = False
             perdas_consecutivas = 0
+            try:
+                global compensation_remaining, sinais_perdidos_por_pausa
+                compensation_remaining = sinais_perdidos_por_pausa
+                sinais_perdidos_por_pausa = 0
+            except Exception:
+                pass
         return
     if cooldown_contador > 0:
         cooldown_contador = max(0, cooldown_contador - 1)
@@ -142,6 +156,30 @@ def registrar_resultado(acertou: bool):
         ativar_cooldown("perda")
         if perdas_consecutivas >= 3:
             ativar_cooldown("stop")
+
+def registrar_resultado_sinal(confianca: str, acertou: bool):
+    try:
+        lbl = confianca if confianca in ("alta", "media", "baixa") else "media"
+        signal_stats[lbl]["total"] = signal_stats[lbl].get("total", 0) + 1
+        signal_stats["geral"]["total"] = signal_stats["geral"].get("total", 0) + 1
+        if acertou:
+            signal_stats[lbl]["acertos"] = signal_stats[lbl].get("acertos", 0) + 1
+            signal_stats["geral"]["acertos"] = signal_stats["geral"].get("acertos", 0) + 1
+        calcular_taxas()
+    except Exception:
+        pass
+
+def calcular_taxas():
+    try:
+        for k in ("alta", "media", "baixa", "geral"):
+            tot = signal_stats[k].get("total", 0)
+            ac = signal_stats[k].get("acertos", 0)
+            signal_stats[k]["taxa"] = round((ac / tot) * 100, 2) if tot > 0 else 0.0
+    except Exception:
+        pass
+
+def obter_estatisticas() -> Dict:
+    return signal_stats
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
@@ -401,12 +439,11 @@ def on_message(data: Dict):
                     pk = pb.get('patternKey')
                     raw_score = pb.get('chance', 0)
                     
-                    # Evitar avaliar um pending bet usando o mesmo resultado que o criou
-                    # (p.createdAt deve ser anterior ao timestamp do resultado atual)
-                    pb_created = pb.get('createdAt', 0)
-                    parsed_ts = parsed.get('timestamp', now_ts)
-                    if pb_created and parsed_ts and pb_created >= parsed_ts:
-                        print(f"[MARTINGALE] Pulando bet {pb.get('id')} — criado em {pb_created} >= resultado {parsed_ts}")
+                    # Evitar avaliar um pending bet usando a MESMA rodada que o criou
+                    # Usa round_index para evitar problemas de relógio/timestamp
+                    created_round = pb.get('createdRound')
+                    if created_round is not None and created_round == round_index:
+                        print(f"[MARTINGALE] Pulando bet {pb.get('id')} — criada na mesma rodada {created_round}")
                         continue
 
                     print(f"[MARTINGALE] Verificando bet {pb.get('id')} | Alvo: {target_color} | Saiu: {res_color} | Tentativas rest: {attempts_left}")
@@ -428,6 +465,10 @@ def on_message(data: Dict):
                         except Exception:
                             pass
                         registrar_resultado(True)
+                        try:
+                            registrar_resultado_sinal(pb.get('confLabel', 'media'), True)
+                        except Exception:
+                            pass
                         # Enviar SSE informando o resultado
                         bet_payload = {"type": "bet_result", "data": pb}
                         bet_message = f"event: bet_result\ndata: {json.dumps(bet_payload)}\n\n"
@@ -453,6 +494,10 @@ def on_message(data: Dict):
                             except Exception:
                                 pass
                             registrar_resultado(False)
+                            try:
+                                registrar_resultado_sinal(pb.get('confLabel', 'media'), False)
+                            except Exception:
+                                pass
                             bet_payload = {"type": "bet_result", "data": pb}
                             bet_message = f"event: bet_result\ndata: {json.dumps(bet_payload)}\n\n"
                             for queue in event_clients:
@@ -533,12 +578,30 @@ def on_message(data: Dict):
                 if signal:
                     if not pode_emitir_alerta():
                         if modo_stop:
-                            print(f"[COOLDOWN] Stop temporário ativo ({stop_counter} rodadas restantes)")
+                            try:
+                                global sinais_perdidos_por_pausa
+                                sinais_perdidos_por_pausa += 1
+                            except Exception:
+                                pass
+                            allow_compensation = False
+                            try:
+                                allow_compensation = compensation_remaining > 0 and signal.get('chance', 0) >= 65
+                            except Exception:
+                                allow_compensation = False
+                            if not allow_compensation:
+                                print(f"[COOLDOWN] Stop temporário ativo ({stop_counter} rodadas restantes)")
+                                return
+                            else:
+                                try:
+                                    compensation_remaining = max(0, compensation_remaining - 1)
+                                except Exception:
+                                    pass
                         elif cooldown_contador > 0:
                             print(f"[COOLDOWN] Padrão detectado mas cooldown ativo ({cooldown_contador} rodadas restantes)")
+                            return
                         else:
                             print(f"[COOLDOWN] Limite global atingido ({GLOBAL_MAX_ALERTS}/{GLOBAL_WINDOW_ROUNDS}) — alerta suprimido")
-                        return
+                            return
                     # Antes de enviar a notificação, criar pendente para martingale (se ativado)
                     pb_id = None
                     try:
@@ -548,6 +611,10 @@ def on_message(data: Dict):
                     except Exception:
                         pb_id = None
                     # Notificar clientes SSE com sinal
+                    try:
+                        signal['rodada_numero'] = round_index
+                    except Exception:
+                        pass
                     signal_payload = {"type": "signal", "data": signal}
                     signal_message = f"event: signal\ndata: {json.dumps(signal_payload)}\n\n"
                     for queue in event_clients:
@@ -567,9 +634,11 @@ def on_message(data: Dict):
                                 'numbers': signal.get('suggestedBet', {}).get('numbers', []),
                                 'chance': signal.get('chance', 0),
                                 'createdAt': int(time.time() * 1000),
-                                'attemptsLeft': CONFIG.MARTINGALE_MAX_ATTEMPTS,
+                                'createdRound': round_index,
+                                'attemptsLeft': (signal.get('gales_permitidos', 0) + 1) if signal.get('gales_permitidos') is not None else CONFIG.MARTINGALE_MAX_ATTEMPTS,
                                 'attemptsUsed': 0,
                                 'protect_white': signal.get('suggestedBet', {}).get('protect_white', False),
+                                'confLabel': signal.get('confLabel', 'media'),
                             }
                             pending_bets.append(pb)
                     except Exception:

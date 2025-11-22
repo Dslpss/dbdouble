@@ -607,7 +607,38 @@ def detect_best_double_signal(results: List[Dict], options: Dict = None) -> Opti
     expected_roi = "Alta recompensa" if len(targets) == 1 else "Recompensa moderada"
     
     # (motivos já preenchidos acima dependendo do modo)
-    
+
+    # Classificação de confiança (alta/média/baixa) e confluência
+    def classify_confidence(conf_value: float) -> str:
+        if conf_value >= 8.5:
+            return "alta"
+        if conf_value >= 7.0:
+            return "media"
+        return "baixa"
+
+    conf_label = classify_confidence(confidence)
+    confluencia_ativa = False
+    if not CONFIG.EMIT_SIGNAL_BASED_ON_PATTERN_ONLY:
+        try:
+            confluencia_ativa = len(reasons_keys) >= 2
+        except Exception:
+            confluencia_ativa = False
+    else:
+        confluencia_ativa = False
+
+    if confluencia_ativa and conf_label != "alta":
+        conf_label = "alta"
+        confidence = max(confidence, 8.5)
+
+    def peso_por_confianca(label: str) -> int:
+        return 3 if label == "alta" else (2 if label == "media" else 1)
+
+    def gales_permitidos(label: str) -> int:
+        return 2 if label == "alta" else (1 if label == "media" else 0)
+
+    peso = peso_por_confianca(conf_label)
+    gales = gales_permitidos(conf_label)
+
     # Ativar cooldown
     if CONFIG.COOLDOWN_MS > 0:
         set_signal_cooldown(time.time() * 1000)
@@ -656,6 +687,7 @@ def detect_best_double_signal(results: List[Dict], options: Dict = None) -> Opti
         "description": description,
         "patternKey": signal_key,
         "confidence": confidence,
+        "confLabel": conf_label,
         "suggestedBet": {
             "type": "color",
             "color": signal_color,
@@ -666,6 +698,11 @@ def detect_best_double_signal(results: List[Dict], options: Dict = None) -> Opti
         },
         "targets": targets,
         "reasons": reasons,
+        "padroes_detectados": reasons_keys,
+        "confluencia": confluencia_ativa,
+        "isPremium": True if confluencia_ativa else False,
+        "peso": peso,
+        "gales_permitidos": gales,
         "validFor": 3,
         "historicalAccuracy": None,
         "isLearning": False,
