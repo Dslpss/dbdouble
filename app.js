@@ -259,6 +259,59 @@ function initializeApp() {
   // Mostrar informações do usuário se logado
   showUserInfo();
 
+  // Wire logout button
+  try {
+    const btnLogout = document.getElementById("btnLogout");
+    if (btnLogout) {
+      btnLogout.addEventListener("click", (e) => {
+        e.preventDefault();
+        logout();
+      });
+    }
+  } catch (e) {}
+
+  try {
+    const modal = document.getElementById("betSignupModal");
+    const closeBtn = document.getElementById("closeBetSignup");
+    if (modal) modal.style.display = "block";
+    if (closeBtn) {
+      closeBtn.addEventListener("click", function () {
+        modal.style.display = "none";
+        const infoModal = document.getElementById("infoModal");
+        const dismissed = localStorage.getItem("infoModalDismissed") === "true";
+        if (infoModal && !dismissed) infoModal.style.display = "block";
+      });
+    }
+    window.addEventListener("click", function (event) {
+      if (event.target === modal) {
+        modal.style.display = "none";
+        const infoModal = document.getElementById("infoModal");
+        const dismissed = localStorage.getItem("infoModalDismissed") === "true";
+        if (infoModal && !dismissed) infoModal.style.display = "block";
+      }
+    });
+  } catch (e) {}
+
+  try {
+    const infoModal = document.getElementById("infoModal");
+    const closeInfo = document.getElementById("closeInfoModal");
+    const infoOkBtn = document.getElementById("infoOkBtn");
+    const dontShow = document.getElementById("dontShowInfoAgain");
+    const signupModal = document.getElementById("betSignupModal");
+    const dismissed = localStorage.getItem("infoModalDismissed") === "true";
+    const signupVisible = signupModal && signupModal.style.display === "block";
+    if (infoModal && !dismissed && !signupVisible) infoModal.style.display = "block";
+    function hideInfoModal() {
+      if (infoModal) infoModal.style.display = "none";
+      if (dontShow && dontShow.checked) localStorage.setItem("infoModalDismissed", "true");
+    }
+    if (closeInfo) closeInfo.addEventListener("click", hideInfoModal);
+    if (infoOkBtn) infoOkBtn.addEventListener("click", hideInfoModal);
+    window.addEventListener("click", function (event) {
+      if (event.target === infoModal) hideInfoModal();
+    });
+  } catch (e) {}
+
   // Inicializar quadrado do header (toggle vermelho/preto)
   try {
     const headerSquare = document.getElementById("headerSquare");
@@ -353,6 +406,30 @@ async function showUserInfo() {
           userInfo.appendChild(adminBtn);
         }
       }
+
+      try {
+        const modal = document.getElementById("betSignupModal");
+        const closeBtn = document.getElementById("closeBetSignup");
+        if (modal && modal.style.display !== "block") {
+          modal.style.display = "block";
+        }
+        if (closeBtn) {
+          closeBtn.onclick = () => {
+            modal.style.display = "none";
+            const infoModal = document.getElementById("infoModal");
+            const dismissed = localStorage.getItem("infoModalDismissed") === "true";
+            if (infoModal && !dismissed) infoModal.style.display = "block";
+          };
+        }
+        window.addEventListener("click", function (event) {
+          if (event.target === modal) {
+            modal.style.display = "none";
+            const infoModal = document.getElementById("infoModal");
+            const dismissed = localStorage.getItem("infoModalDismissed") === "true";
+            if (infoModal && !dismissed) infoModal.style.display = "block";
+          }
+        });
+      } catch (e) {}
     }
   } catch (error) {
     console.error("Erro ao buscar informações do usuário:", error);

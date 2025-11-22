@@ -1,3 +1,4 @@
+import os
 import asyncio
 import db as db_module
 from db import init_db
@@ -5,11 +6,14 @@ from routes.auth import get_password_hash
 from datetime import datetime
 
 async def check_admin():
-    # init_db não é assíncrona, então chamamos diretamente
-    init_db(uri="mongodb+srv://dennisemannuel93_db_user:SKNCQMWX3CwFequM@cluster0.9d4whwj.mongodb.net/")
+    init_db()
+    admin_email = os.getenv("ADMIN_EMAIL")
+    admin_password = os.getenv("ADMIN_PASSWORD")
+    if not admin_email or not admin_password:
+        raise RuntimeError("Missing ADMIN_EMAIL or ADMIN_PASSWORD environment variables")
 
     # Verificar se o usuário admin existe
-    admin_user = await db_module.db.users.find_one({'email': 'dennisemannuel93@gmail.com'})
+    admin_user = await db_module.db.users.find_one({'email': admin_email})
     if admin_user:
         print(f'Usuário admin encontrado: {admin_user["email"]}')
         print(f'is_admin: {admin_user.get("is_admin", False)}')
@@ -19,7 +23,7 @@ async def check_admin():
         if not admin_user.get("is_admin", False):
             print("Atualizando usuário para admin...")
             result = await db_module.db.users.update_one(
-                {'email': 'dennisemannuel93@gmail.com'},
+                {'email': admin_email},
                 {'$set': {'is_admin': True}}
             )
             print(f"Usuário atualizado para admin: {result.modified_count} documento(s) modificado(s)")
@@ -27,9 +31,9 @@ async def check_admin():
         print('Usuário admin NÃO encontrado')
 
         # Criar usuário admin
-        hashed = get_password_hash('Flamengo.019')
+        hashed = get_password_hash(admin_password)
         doc = {
-            'email': 'dennisemannuel93@gmail.com',
+            'email': admin_email,
             'username': 'admin',
             'password_hash': hashed,
             'bankroll': 1000.0,
