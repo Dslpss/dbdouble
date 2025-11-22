@@ -71,12 +71,12 @@ event_clients: List[asyncio.Queue] = []
 pending_bets: List[Dict] = []
 
 # Cooldown (server-side)
-COOLDOWN_BASIC = 7
-COOLDOWN_AFTER_LOSS = 12
-STOP_AFTER_3_LOSSES = 20
+COOLDOWN_BASIC = 4
+COOLDOWN_AFTER_LOSS = 8
+STOP_AFTER_3_LOSSES = 12
 MIN_COOLDOWN_AFTER_WIN = 3
-GLOBAL_WINDOW_ROUNDS = 50
-GLOBAL_MAX_ALERTS = 3
+GLOBAL_WINDOW_ROUNDS = 30
+GLOBAL_MAX_ALERTS = 4
 
 cooldown_contador = 0
 perdas_consecutivas = 0

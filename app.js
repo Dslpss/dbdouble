@@ -38,12 +38,12 @@ const RESOLUTION_DEDUP_WINDOW_MS = 8000; // 8 segundos
 // Cooldown system for alerts
 // -----------------------------
 // Configuráveis
-const COOLDOWN_BASIC = 7; // rodadas básicas após emitir um alerta
-const COOLDOWN_AFTER_LOSS = 12; // rodadas após perda
-const STOP_AFTER_3_LOSSES = 20; // stop temporário após 3 perdas consecutivas
-const MIN_COOLDOWN_AFTER_WIN = 3; // mínimo após reduzir pela metade
-const GLOBAL_WINDOW_ROUNDS = 50; // janela global (rodadas)
-const GLOBAL_MAX_ALERTS = 3; // máximo alertas por janela global
+const COOLDOWN_BASIC = 4;
+const COOLDOWN_AFTER_LOSS = 8;
+const STOP_AFTER_3_LOSSES = 12;
+const MIN_COOLDOWN_AFTER_WIN = 3;
+const GLOBAL_WINDOW_ROUNDS = 30;
+const GLOBAL_MAX_ALERTS = 4;
 // Quanto tempo (ms) mostrar WIN/LOSS no card antes de voltar ao estado de busca
 const SIGNAL_RESOLUTION_DISPLAY_MS = 5000;
 
@@ -1030,11 +1030,9 @@ function checkForSignals() {
   // Se houver sinais pendentes, não detectar novos sinais até resolução
   if (pendingSignals && pendingSignals.length > 0) {
     console.log(
-      `Sinal suprimido: existem ${pendingSignals.length} pendentes, procurando pausada.`
+      `Existem ${pendingSignals.length} sinais pendentes — continuando detecção para não atrasar.`
     );
-    // Atualizar UI de pendência caso necessário
     updatePendingStatusUI();
-    return;
   }
 
   // Mostrar que estamos procurando por padrões

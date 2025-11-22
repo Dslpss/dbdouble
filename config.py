@@ -19,14 +19,14 @@ class Config:
     IMBALANCE_DIFF = 2  # diferença mínima entre red e black
     
     # Qualidade mínima da amostra
-    MIN_SAMPLE_TOTAL = 8
+    MIN_SAMPLE_TOTAL = 6
     
     # Seleção
     RANDOMIZE_TOP_DELTA = 5
     COMPOSED_MIN_AGREE = 1  # mínimo de padrões concordando
     
     # Cooldown de emissão (ms)
-    COOLDOWN_MS = 10000
+    COOLDOWN_MS = 0
 
     # Emitir sinais apenas quando exatamente 1 padrão for detectado
     # Se True: retorna somente quando len(patterns) == 1
@@ -43,7 +43,7 @@ class Config:
     MARTINGALE_ENABLED = True
     MARTINGALE_MAX_ATTEMPTS = 3
     # Bloquear emissão de novos sinais enquanto houver aposta pendente
-    BLOCK_SIGNALS_WHILE_PENDING = True
+    BLOCK_SIGNALS_WHILE_PENDING = False
     
     # Parâmetros de calibração (Platt-like logistic)
     CALIBRATION = {
