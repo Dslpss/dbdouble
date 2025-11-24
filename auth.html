@@ -347,14 +347,7 @@
             <label for="reg-username">Nome de usuário</label>
             <input id="reg-username" type="text" placeholder="Seu nome" />
           </div>
-          <div class="form-group">
-            <label for="reg-bankroll">Bankroll inicial (R$)</label>
-            <input
-              id="reg-bankroll"
-              type="number"
-              placeholder="100.00"
-              step="0.01" />
-          </div>
+
           <div class="form-group">
             <label for="reg-password">Senha</label>
             <input id="reg-password" type="password" placeholder="••••••••" />
@@ -375,33 +368,9 @@
           <button class="auth-btn" id="btn-login">Entrar</button>
           <div id="login-result"></div>
 
-          <div class="token-display">
-            <h4>Token JWT</h4>
-            <div id="token">-</div>
-          </div>
 
-          <div class="bankroll-section">
-            <h4 style="color: #e0e8ff; margin-bottom: 15px">
-              Gerenciar Bankroll
-            </h4>
-            <div class="form-group">
-              <label for="me-bankroll">Valor atual (R$)</label>
-              <input
-                id="me-bankroll"
-                type="number"
-                placeholder="0.00"
-                step="0.01" />
-            </div>
-            <div class="bankroll-controls">
-              <button class="btn-secondary" id="btn-get-bankroll">
-                Carregar
-              </button>
-              <button class="btn-primary" id="btn-set-bankroll">
-                Atualizar
-              </button>
-            </div>
-            <div id="me-bankroll-result"></div>
-          </div>
+
+
         </div>
       </div>
     </div>
@@ -462,7 +431,7 @@
         const email = document.getElementById("reg-email").value;
         const username = document.getElementById("reg-username").value;
         const password = document.getElementById("reg-password").value;
-        const bankroll = document.getElementById("reg-bankroll").value || 0;
+        const bankroll = 0;
 
         if (!email || !username || !password) {
           showResult(
@@ -520,22 +489,10 @@
 
           if (res.ok && data.access_token) {
             localStorage.setItem("token", data.access_token);
-            document.getElementById("token").innerText = data.access_token;
+
             showResult("login-result", "Login realizado com sucesso!", true);
 
-            // Load bankroll automatically
-            try {
-              const bankRes = await fetch(`${apiBase}/api/auth/user/bankroll`, {
-                headers: { Authorization: `Bearer ${data.access_token}` },
-              });
-              if (bankRes.ok) {
-                const bankData = await bankRes.json();
-                if (bankData.bankroll !== undefined) {
-                  document.getElementById("me-bankroll").value =
-                    bankData.bankroll;
-                }
-              }
-            } catch (e) {}
+
 
             // Redirect to main page
             setTimeout(() => {
@@ -555,75 +512,7 @@
         .addEventListener("click", register);
       document.getElementById("btn-login").addEventListener("click", login);
 
-      document
-        .getElementById("btn-get-bankroll")
-        .addEventListener("click", async () => {
-          const token = localStorage.getItem("token");
-          if (!token) {
-            showResult("me-bankroll-result", "Faça login primeiro.");
-            return;
-          }
 
-          try {
-            const res = await fetch(`${apiBase}/api/auth/user/bankroll`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-
-            const data = await res.json();
-            document.getElementById("me-bankroll").value = data.bankroll;
-            showResult(
-              "me-bankroll-result",
-              `Bankroll atualizado: R$ ${data.bankroll}`,
-              true
-            );
-          } catch (error) {
-            showResult("me-bankroll-result", "Erro ao carregar bankroll.");
-          }
-        });
-
-      document
-        .getElementById("btn-set-bankroll")
-        .addEventListener("click", async () => {
-          const token = localStorage.getItem("token");
-          const val = document.getElementById("me-bankroll").value;
-
-          if (!token) {
-            showResult("me-bankroll-result", "Faça login primeiro.");
-            return;
-          }
-
-          if (!val || isNaN(val)) {
-            showResult("me-bankroll-result", "Digite um valor válido.");
-            return;
-          }
-
-          try {
-            const res = await fetch(`${apiBase}/api/auth/user/bankroll`, {
-              method: "PUT",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ bankroll: parseFloat(val) }),
-            });
-
-            const data = await res.json();
-            if (res.ok) {
-              showResult(
-                "me-bankroll-result",
-                `Bankroll atualizado para R$ ${data.bankroll}`,
-                true
-              );
-            } else {
-              showResult(
-                "me-bankroll-result",
-                data.detail || "Erro ao atualizar bankroll."
-              );
-            }
-          } catch (error) {
-            showResult("me-bankroll-result", "Erro de conexão.");
-          }
-        });
 
       // Enter key support
       document.addEventListener("keypress", function (e) {
