@@ -264,6 +264,10 @@ async function initializeApp() {
         lossCount = parseInt(sdata.losses || 0);
         lastWinTimestamp = sdata.lastWinTime || null;
         lastLossTimestamp = sdata.lastLossTime || null;
+        try {
+          if (lastWinTimestamp) setLastTimeDom("win", lastWinTimestamp);
+          if (lastLossTimestamp) setLastTimeDom("loss", lastLossTimestamp);
+        } catch (e) {}
       } catch (e) {}
     }
   } catch (e) {}
