@@ -21,7 +21,6 @@
           <div class="user-info" id="userInfo" style="display: none">
             <div class="user-details">
               <span id="userEmail"></span>
-
             </div>
             <div class="user-actions">
               <button id="btnLogout" class="logout-btn">Logout</button>
@@ -38,12 +37,23 @@
       <section class="stats-section">
         <div class="stats-grid">
           <div class="stat-card">
-            <div class="stat-label">Total <span style="font-size:0.85em;color:var(--text-secondary)">(50 mais recentes)</span></div>
+            <div class="stat-label">
+              Total
+              <span style="font-size: 0.85em; color: var(--text-secondary)"
+                >(50 mais recentes)</span
+              >
+            </div>
             <div class="stat-value" id="statTotal">0</div>
           </div>
           <div class="stat-card win">
             <div class="stat-label">Wins</div>
             <div class="stat-value" id="statWins">0</div>
+            <div
+              class="stat-value"
+              id="statWinsPct"
+              style="font-size: 0.9em; color: var(--text-secondary)">
+              0%
+            </div>
           </div>
           <div class="stat-card loss">
             <div class="stat-label">Loss</div>
@@ -233,29 +243,44 @@
         <span class="close" id="closeBetSignup">&times;</span>
         <h2 class="modal-title">Cadastro na Casa de Apostas</h2>
         <p class="modal-description">
-          Crie sua conta na Playna Bets para utilizar os sinais com a casa suportada.
+          Crie sua conta na Playna Bets para utilizar os sinais com a casa
+          suportada.
         </p>
         <a
           href="https://playnabets.com/cadastro?refId=NjMzMTRyZWZJZA=="
           target="_blank"
           rel="noopener noreferrer"
           class="btn-primary"
-          style="text-decoration:none"
-        >Cadastrar na Playna Bets</a>
+          style="text-decoration: none"
+          >Cadastrar na Playna Bets</a
+        >
       </div>
     </div>
     <div id="infoModal" class="modal" style="display: none">
       <div class="modal-content">
         <span class="close" id="closeInfoModal">&times;</span>
         <h2 class="modal-title">Como usar o DBcolor</h2>
-        <p class="modal-description">O sistema analisa resultados em tempo real e emite alertas de cor quando padrões são detectados.</p>
-        <ul style="color:#c0c8e0; margin:0 0 14px 18px">
+        <p class="modal-description">
+          O sistema analisa resultados em tempo real e emite alertas de cor
+          quando padrões são detectados.
+        </p>
+        <ul style="color: #c0c8e0; margin: 0 0 14px 18px">
           <li>Espere um alerta e aposte na cor indicada.</li>
           <li>Use a proteção ao Branco quando indicado.</li>
           <li>Até 3 tentativas por sinal, com status "Tentativa X/3".</li>
         </ul>
-        <p class="modal-description">Acompanhe os resultados recentes e o card de sinal para saber quando apostar.</p>
-        <label style="display:flex;align-items:center;gap:8px;color:#a0a8c8;margin:10px 0 18px 0">
+        <p class="modal-description">
+          Acompanhe os resultados recentes e o card de sinal para saber quando
+          apostar.
+        </p>
+        <label
+          style="
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #a0a8c8;
+            margin: 10px 0 18px 0;
+          ">
           <input type="checkbox" id="dontShowInfoAgain" />
           Não mostrar novamente
         </label>

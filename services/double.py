@@ -7,7 +7,7 @@ import random
 import time
 from config import CONFIG
 from services.parser import summarize_results
-from services.adaptive_calibration import get_platt_params, update_pattern_stat, online_update_platt
+from services.adaptive_calibration import get_platt_params, update_pattern_stat, online_update_platt, getAll_pattern_stats
 import uuid
 
 # Cooldown de sinais
@@ -630,6 +630,33 @@ def detect_best_double_signal(results: List[Dict], options: Dict = None) -> Opti
         conf_label = "alta"
         confidence = max(confidence, 8.5)
 
+    # Ajuste fino de confiança solicitado: usar confluência + força histórica por padrão
+    try:
+        active = []
+        try:
+            active = reasons_keys
+        except Exception:
+            # modo pattern-only: usar a própria key como ativo
+            active = [signal_key] if 'signal_key' in locals() else []
+        stats_all = getAll_pattern_stats() or {}
+        base = len(active)
+        score = float(base)
+        for k in active:
+            st = stats_all.get(k) or {}
+            wins = float(st.get("wins", 0))
+            losses = float(st.get("losses", 0))
+            total = max(1.0, wins + losses)
+            acc = wins / total
+            score += acc
+        if score >= 3.5:
+            conf_label = "alta"
+        elif score >= 2.2:
+            conf_label = "media"
+        else:
+            conf_label = "baixa"
+    except Exception:
+        pass
+
     def peso_por_confianca(label: str) -> int:
         return 3 if label == "alta" else (2 if label == "media" else 1)
 
@@ -688,6 +715,7 @@ def detect_best_double_signal(results: List[Dict], options: Dict = None) -> Opti
         "patternKey": signal_key,
         "confidence": confidence,
         "confLabel": conf_label,
+        "confianca": conf_label,
         "suggestedBet": {
             "type": "color",
             "color": signal_color,
@@ -699,10 +727,12 @@ def detect_best_double_signal(results: List[Dict], options: Dict = None) -> Opti
         "targets": targets,
         "reasons": reasons,
         "padroes_detectados": reasons_keys,
+        "padroesQueDispararam": reasons_keys,
         "confluencia": confluencia_ativa,
         "isPremium": True if confluencia_ativa else False,
         "peso": peso,
         "gales_permitidos": gales,
+        "maxGales": gales,
         "validFor": 3,
         "historicalAccuracy": None,
         "isLearning": False,

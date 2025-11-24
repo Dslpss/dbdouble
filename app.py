@@ -76,7 +76,9 @@ compensation_remaining = 0
 # Cooldown (server-side)
 COOLDOWN_BASIC = 4
 COOLDOWN_AFTER_LOSS = 8
-STOP_AFTER_3_LOSSES = 12
+# Anti-tilt: pausa após perdas fortes consecutivas
+ANTI_TILT_LOSS_STREAK = 2
+STOP_DURATION_ROUNDS = 12
 MIN_COOLDOWN_AFTER_WIN = 3
 GLOBAL_WINDOW_ROUNDS = 30
 GLOBAL_MAX_ALERTS = 4
@@ -96,6 +98,8 @@ signal_stats = {
 }
 sinais_perdidos_por_pausa = 0
 compensation_remaining = 0
+sinais_emitidos_hoje = 0
+meta_sinais_dia = 100
 last_win_ts = None
 last_loss_ts = None
 
@@ -125,7 +129,7 @@ def ativar_cooldown(tipo: str):
         modo_conservador = True
     elif tipo == "stop":
         modo_stop = True
-        stop_counter = STOP_AFTER_3_LOSSES
+        stop_counter = STOP_DURATION_ROUNDS
         cooldown_contador = 0
 
 def verificar_cooldown() -> bool:
@@ -159,7 +163,7 @@ def registrar_resultado(acertou: bool):
     else:
         perdas_consecutivas += 1
         ativar_cooldown("perda")
-        if perdas_consecutivas >= 3:
+        if perdas_consecutivas >= ANTI_TILT_LOSS_STREAK:
             ativar_cooldown("stop")
 
 def registrar_resultado_sinal(confianca: str, acertou: bool):
@@ -734,6 +738,11 @@ def on_message(data: Dict):
                             queue.put_nowait(signal_message)
                         except:
                             pass
+                    try:
+                        global sinais_emitidos_hoje
+                        sinais_emitidos_hoje += 1
+                    except Exception:
+                        pass
                     registrar_alerta()
                     ativar_cooldown("basico")
                     # Se martingale ativado, anexar pendente

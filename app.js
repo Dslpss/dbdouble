@@ -278,8 +278,14 @@ async function initializeApp() {
   // Inicializar contadores de wins/losses no DOM
   const winsEl = document.getElementById("statWins");
   const lossesEl = document.getElementById("statLosses");
+  const winsPctEl = document.getElementById("statWinsPct");
   if (winsEl) winsEl.textContent = String(winCount);
   if (lossesEl) lossesEl.textContent = String(lossCount);
+  if (winsPctEl) {
+    const total = (winCount || 0) + (lossCount || 0);
+    const pct = total > 0 ? Math.round((winCount / total) * 100) : 0;
+    winsPctEl.textContent = `${pct}%`;
+  }
 
   // Mostrar informações do usuário se logado
   showUserInfo();
@@ -906,8 +912,14 @@ function updateWinLossCounts(outcome, signalId, resolvedAt = null) {
   // Atualizar DOM
   const winsEl = document.getElementById("statWins");
   const lossesEl = document.getElementById("statLosses");
+  const winsPctEl = document.getElementById("statWinsPct");
   if (winsEl) winsEl.textContent = String(winCount);
   if (lossesEl) lossesEl.textContent = String(lossCount);
+  if (winsPctEl) {
+    const total = (winCount || 0) + (lossCount || 0);
+    const pct = total > 0 ? Math.round((winCount / total) * 100) : 0;
+    winsPctEl.textContent = `${pct}%`;
+  }
 
   // Atualizar profit card caso esteja visível (simulador removido)
   try {
