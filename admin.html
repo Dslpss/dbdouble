@@ -156,6 +156,7 @@
         <button id="btnRefreshUsers" class="btn-admin secondary">
           Atualizar Usuários
         </button>
+        <button id="btnResetState" class="btn-admin" style="background:#ff6b6b">Resetar Estado</button>
         <button id="btnBackToApp" class="btn-admin secondary">
           Voltar ao App
         </button>
@@ -343,6 +344,25 @@
         .addEventListener("click", loadUsers);
       document.getElementById("btnBackToApp").addEventListener("click", () => {
         window.location.href = "/";
+      });
+
+      document.getElementById("btnResetState").addEventListener("click", async () => {
+        try {
+          const token = localStorage.getItem("token");
+          const res = await fetch(`${API_BASE_URL}/api/admin/reset`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const data = await res.json();
+          if (res.ok && data.ok) {
+            showError("Estado do servidor resetado com sucesso.");
+            await loadStats();
+          } else {
+            showError(data.error || "Falha ao resetar estado");
+          }
+        } catch (e) {
+          showError("Erro de conexão ao resetar estado");
+        }
       });
 
       // Initialize

@@ -173,18 +173,44 @@ async def update_preferences(payload: dict, current_user: dict = Depends(get_cur
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Falha ao atualizar preferências")
 
 # Admin routes
-@router.get("/admin")
-async def admin_page(admin_user: dict = Depends(get_admin_user)):
-    """Get database statistics - admin only"""
+@router.get("/admin/stats")
+async def admin_stats(admin_user: dict = Depends(get_admin_user)):
     total_users = await db_module.db.users.count_documents({})
     total_bankroll = await db_module.db.users.aggregate([
         {"$group": {"_id": None, "total": {"$sum": "$bankroll"}}}
     ]).to_list(length=1)
-    
     total_bankroll_value = total_bankroll[0]["total"] if total_bankroll else 0
-    
     return {
         "total_users": total_users,
         "total_bankroll": float(total_bankroll_value),
-        "database_name": db_module.db.name
+        "database_name": db_module.db.name,
     }
+
+@router.get("/admin/users")
+async def admin_users(admin_user: dict = Depends(get_admin_user)):
+    projection = {
+        "email": 1,
+        "username": 1,
+        "bankroll": 1,
+        "enabled_colors": 1,
+        "enabled_patterns": 1,
+        "receive_alerts": 1,
+        "is_admin": 1,
+        "created_at": 1,
+        "last_login": 1,
+        "_id": 0,
+    }
+    users = await db_module.db.users.find({}, projection).to_list(length=None)
+    def _normalize(u):
+        return {
+            "email": u.get("email"),
+            "username": u.get("username"),
+            "bankroll": float(u.get("bankroll", 0)),
+            "enabled_colors": u.get("enabled_colors", []),
+            "enabled_patterns": u.get("enabled_patterns", []),
+            "receive_alerts": bool(u.get("receive_alerts", True)),
+            "is_admin": bool(u.get("is_admin", False)),
+            "created_at": u.get("created_at"),
+            "last_login": u.get("last_login"),
+        }
+    return {"users": [ _normalize(u) for u in users ]}

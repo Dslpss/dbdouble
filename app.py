@@ -2,7 +2,7 @@
 DBcolor - Servidor principal
 Aplicação FastAPI para análise de padrões do Double
 """
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 import asyncio
@@ -21,7 +21,8 @@ from services.double import numbers_for_color
 from services.adaptive_calibration import update_pattern_stat, online_update_platt
 from config import CONFIG
 from db import init_db
-from routes.auth import router as auth_router, get_current_user
+import db as db_module
+from routes.auth import router as auth_router, get_current_user, get_admin_user
 # Import do motor de padrões simples (opcional)
 try:
     from services.pattern_signals import SignalEngine
@@ -69,6 +70,8 @@ ws_connected = False
 event_clients: List[asyncio.Queue] = []
 # Martingale: bets pending (signals still being verified for win/loss)
 pending_bets: List[Dict] = []
+sinais_perdidos_por_pausa = 0
+compensation_remaining = 0
 
 # Cooldown (server-side)
 COOLDOWN_BASIC = 4
@@ -93,6 +96,8 @@ signal_stats = {
 }
 sinais_perdidos_por_pausa = 0
 compensation_remaining = 0
+last_win_ts = None
+last_loss_ts = None
 
 def decrementar_cooldown():
     global modo_stop, stop_counter, cooldown_contador, perdas_consecutivas
@@ -248,6 +253,13 @@ async def styles():
         return FileResponse(css_path, media_type="text/css")
     return {"error": "File not found"}, 404
 
+@app.get("/favicon.ico")
+async def favicon():
+    ico_path = os.path.join(base_dir, "favicon.ico")
+    if os.path.exists(ico_path):
+        return FileResponse(ico_path, media_type="image/x-icon")
+    return HTMLResponse(status_code=204)
+
 
 @app.get("/auth", response_class=HTMLResponse)
 async def auth_page():
@@ -292,6 +304,98 @@ async def api_get_results(limit: int = 20):
         "results_count": len(results_history),
         "results": results_history[:limit],
     }
+
+@app.get("/api/signal_stats")
+async def api_signal_stats():
+    try:
+        geral = signal_stats.get("geral", {})
+        total = int(geral.get("total", 0))
+        acertos = int(geral.get("acertos", 0))
+        perdas = max(0, total - acertos)
+        return {
+            "ok": True,
+            "wins": acertos,
+            "losses": perdas,
+            "lastWinTime": last_win_ts,
+            "lastLossTime": last_loss_ts,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.post("/api/admin/reset")
+async def admin_reset_state(admin_user: dict = Depends(get_admin_user)):
+    try:
+        global results_history, pending_bets, cooldown_contador, perdas_consecutivas, modo_stop, stop_counter, modo_conservador, historico_alertas, round_index, signal_stats, sinais_perdidos_por_pausa, compensation_remaining
+        results_history = []
+        pending_bets = []
+        cooldown_contador = 0
+        perdas_consecutivas = 0
+        modo_stop = False
+        stop_counter = 0
+        modo_conservador = False
+        historico_alertas = []
+        round_index = 0
+        sinais_perdidos_por_pausa = 0
+        compensation_remaining = 0
+        signal_stats = {
+            "alta": {"total": 0, "acertos": 0, "taxa": 0.0},
+            "media": {"total": 0, "acertos": 0, "taxa": 0.0},
+            "baixa": {"total": 0, "acertos": 0, "taxa": 0.0},
+            "geral": {"total": 0, "acertos": 0, "taxa": 0.0},
+        }
+        try:
+            base = os.path.dirname(os.path.abspath(__file__))
+            for fname in ("platt_params.json", "pattern_stats.json"):
+                fpath = os.path.join(base, fname)
+                if os.path.exists(fpath):
+                    os.remove(fpath)
+        except Exception:
+            pass
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.get("/api/auth/admin/stats")
+async def _admin_stats(admin_user: dict = Depends(get_admin_user)):
+    total_users = await db_module.db.users.count_documents({})
+    total_bankroll = await db_module.db.users.aggregate([
+        {"$group": {"_id": None, "total": {"$sum": "$bankroll"}}}
+    ]).to_list(length=1)
+    total_bankroll_value = total_bankroll[0]["total"] if total_bankroll else 0
+    return {
+        "total_users": total_users,
+        "total_bankroll": float(total_bankroll_value),
+        "database_name": db_module.db.name,
+    }
+
+@app.get("/api/auth/admin/users")
+async def _admin_users(admin_user: dict = Depends(get_admin_user)):
+    projection = {
+        "email": 1,
+        "username": 1,
+        "bankroll": 1,
+        "enabled_colors": 1,
+        "enabled_patterns": 1,
+        "receive_alerts": 1,
+        "is_admin": 1,
+        "created_at": 1,
+        "last_login": 1,
+        "_id": 0,
+    }
+    users = await db_module.db.users.find({}, projection).to_list(length=None)
+    def _normalize(u):
+        return {
+            "email": u.get("email"),
+            "username": u.get("username"),
+            "bankroll": float(u.get("bankroll", 0)),
+            "enabled_colors": u.get("enabled_colors", []),
+            "enabled_patterns": u.get("enabled_patterns", []),
+            "receive_alerts": bool(u.get("receive_alerts", True)),
+            "is_admin": bool(u.get("is_admin", False)),
+            "created_at": u.get("created_at"),
+            "last_login": u.get("last_login"),
+        }
+    return {"users": [ _normalize(u) for u in users ]}
 
 @app.post("/api/connect")
 async def connect():
@@ -469,6 +573,10 @@ def on_message(data: Dict):
                             registrar_resultado_sinal(pb.get('confLabel', 'media'), True)
                         except Exception:
                             pass
+                        try:
+                            last_win_ts = now_ts
+                        except Exception:
+                            pass
                         # Enviar SSE informando o resultado
                         bet_payload = {"type": "bet_result", "data": pb}
                         bet_message = f"event: bet_result\ndata: {json.dumps(bet_payload)}\n\n"
@@ -496,6 +604,10 @@ def on_message(data: Dict):
                             registrar_resultado(False)
                             try:
                                 registrar_resultado_sinal(pb.get('confLabel', 'media'), False)
+                            except Exception:
+                                pass
+                            try:
+                                last_loss_ts = now_ts
                             except Exception:
                                 pass
                             bet_payload = {"type": "bet_result", "data": pb}

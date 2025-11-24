@@ -242,10 +242,31 @@ async function ensureAuthenticated() {
 
 document.addEventListener("DOMContentLoaded", async () => {
   await ensureAuthenticated();
-  initializeApp();
+  await initializeApp();
 });
 
-function initializeApp() {
+async function initializeApp() {
+  try {
+    const resp = await fetch(`${API_BASE_URL}/api/results?limit=50`);
+    const data = await resp.json();
+    if (data && data.ok && Array.isArray(data.results)) {
+      try {
+        results = (data.results || []).reverse();
+      } catch (e) {}
+    }
+  } catch (e) {}
+  try {
+    const sresp = await fetch(`${API_BASE_URL}/api/signal_stats`);
+    const sdata = await sresp.json();
+    if (sdata && sdata.ok) {
+      try {
+        winCount = parseInt(sdata.wins || 0);
+        lossCount = parseInt(sdata.losses || 0);
+        lastWinTimestamp = sdata.lastWinTime || null;
+        lastLossTimestamp = sdata.lastLossTime || null;
+      } catch (e) {}
+    }
+  } catch (e) {}
   connectSSE();
   updateStats();
   // Mostrar estado inicial de busca
@@ -300,10 +321,12 @@ function initializeApp() {
     const signupModal = document.getElementById("betSignupModal");
     const dismissed = localStorage.getItem("infoModalDismissed") === "true";
     const signupVisible = signupModal && signupModal.style.display === "block";
-    if (infoModal && !dismissed && !signupVisible) infoModal.style.display = "block";
+    if (infoModal && !dismissed && !signupVisible)
+      infoModal.style.display = "block";
     function hideInfoModal() {
       if (infoModal) infoModal.style.display = "none";
-      if (dontShow && dontShow.checked) localStorage.setItem("infoModalDismissed", "true");
+      if (dontShow && dontShow.checked)
+        localStorage.setItem("infoModalDismissed", "true");
     }
     if (closeInfo) closeInfo.addEventListener("click", hideInfoModal);
     if (infoOkBtn) infoOkBtn.addEventListener("click", hideInfoModal);
@@ -416,7 +439,8 @@ async function showUserInfo() {
           closeBtn.onclick = () => {
             modal.style.display = "none";
             const infoModal = document.getElementById("infoModal");
-            const dismissed = localStorage.getItem("infoModalDismissed") === "true";
+            const dismissed =
+              localStorage.getItem("infoModalDismissed") === "true";
             if (infoModal && !dismissed) infoModal.style.display = "block";
           };
         }
@@ -424,7 +448,8 @@ async function showUserInfo() {
           if (event.target === modal) {
             modal.style.display = "none";
             const infoModal = document.getElementById("infoModal");
-            const dismissed = localStorage.getItem("infoModalDismissed") === "true";
+            const dismissed =
+              localStorage.getItem("infoModalDismissed") === "true";
             if (infoModal && !dismissed) infoModal.style.display = "block";
           }
         });
@@ -548,9 +573,7 @@ function handleNewResult(data) {
   // Avaliar sinais pendentes com o novo resultado (faz primeiro para não sobrescrever o card)
   evaluatePendingSignals(data);
 
-  // Verificar se há sinal (se o backend enviar)
-  // Por enquanto, vamos detectar padrões localmente
-  checkForSignals();
+  // Sinais são enviados pelo backend; não detectar localmente
 }
 
 // Avalia sinais pendentes quando chega um novo resultado
@@ -943,7 +966,8 @@ function showSignalResolutionOnCard(outcome, attemptsUsed) {
             const pendingStatusEl = document.getElementById(
               "signalPendingStatus"
             );
-            const existingProtect = document.getElementById("protectWhiteBadge");
+            const existingProtect =
+              document.getElementById("protectWhiteBadge");
             if (badge) {
               badge.classList.remove("win", "loss");
             }
@@ -1125,14 +1149,22 @@ function checkForSignals() {
       ativar_cooldown("basico");
       log_cooldown_status();
     } else {
-      const expectedColor = signal.suggestedBet ? signal.suggestedBet.color : null;
+      const expectedColor = signal.suggestedBet
+        ? signal.suggestedBet.color
+        : null;
       registerSuppressedSignature(expectedColor, null);
       if (modo_stop) {
-        console.log(`Stop temporário ativo (${stop_counter} rodadas restantes)`);
+        console.log(
+          `Stop temporário ativo (${stop_counter} rodadas restantes)`
+        );
       } else if (cooldown_contador > 0) {
-        console.log(`Padrão detectado mas cooldown ativo (${cooldown_contador} rodadas restantes)`);
+        console.log(
+          `Padrão detectado mas cooldown ativo (${cooldown_contador} rodadas restantes)`
+        );
       } else {
-        console.log(`Limite global atingido (${GLOBAL_MAX_ALERTS}/${GLOBAL_WINDOW_ROUNDS}) — sinal suprimido`);
+        console.log(
+          `Limite global atingido (${GLOBAL_MAX_ALERTS}/${GLOBAL_WINDOW_ROUNDS}) — sinal suprimido`
+        );
       }
     }
   }
