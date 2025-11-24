@@ -48,6 +48,7 @@ async def register(user: UserIn):
         "receive_alerts": user.receive_alerts if user.receive_alerts is not None else True,
         "is_admin": is_admin,
         "created_at": datetime.utcnow(),
+        "last_login": datetime.utcnow(),
     }
     res = await db_module.db.users.insert_one(doc)
     return UserOut(
@@ -68,6 +69,11 @@ async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depen
     user = await db_module.db.users.find_one({"email": form_data.username})
     if not user or not verify_password(form_data.password, user.get("password_hash")):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais inválidas")
+    # Update last_login
+    await db_module.db.users.update_one(
+        {"email": user["email"]},
+        {"$set": {"last_login": datetime.utcnow()}}
+    )
     token = create_access_token({"sub": user["email"]})
     # Set cookie for session persistence
     response.set_cookie(
@@ -169,25 +175,6 @@ async def update_preferences(payload: dict, current_user: dict = Depends(get_cur
 # Admin routes
 @router.get("/admin")
 async def admin_page(admin_user: dict = Depends(get_admin_user)):
-    """Serve admin page - only for admins"""
-    return {"message": "Welcome to admin panel", "admin_email": admin_user["email"]}
-
-@router.get("/admin/users")
-async def get_all_users(admin_user: dict = Depends(get_admin_user)):
-    """Get all users - admin only"""
-    users = await db_module.db.users.find({}, {"password_hash": 0}).to_list(length=None)
-    
-    # Convert MongoDB objects to JSON serializable format
-    for user in users:
-        if "_id" in user:
-            user["_id"] = str(user["_id"])
-        if "created_at" in user and user["created_at"]:
-            user["created_at"] = user["created_at"].isoformat()
-    
-    return {"users": users, "total": len(users)}
-
-@router.get("/admin/stats")
-async def get_admin_stats(admin_user: dict = Depends(get_admin_user)):
     """Get database statistics - admin only"""
     total_users = await db_module.db.users.count_documents({})
     total_bankroll = await db_module.db.users.aggregate([

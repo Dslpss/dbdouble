@@ -177,6 +177,7 @@
               <th>Alertas</th>
               <th>Admin</th>
               <th>Data Cadastro</th>
+              <th>Último Login</th>
             </tr>
           </thead>
           <tbody id="usersTableBody">
@@ -313,6 +314,11 @@
                 ? new Date(
                     user.created_at.$date || user.created_at
                   ).toLocaleDateString("pt-BR")
+                : "-"
+            }</td>
+            <td>${
+              user.last_login
+                ? new Date(user.last_login).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })
                 : "-"
             }</td>
           </tr>

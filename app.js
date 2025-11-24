@@ -389,11 +389,10 @@ async function showUserInfo() {
       // Mostrar informações
       const userInfo = document.getElementById("userInfo");
       const userEmail = document.getElementById("userEmail");
-      const userBankroll = document.getElementById("userBankroll");
 
-      if (userInfo && userEmail && userBankroll) {
+      if (userInfo && userEmail) {
         userEmail.textContent = userData.email;
-        userBankroll.textContent = `R$ ${bankroll.toFixed(2)}`;
+        userEmail.textContent = userData.email;
         userInfo.style.display = "flex";
 
         // Mostrar botão admin se usuário for admin
