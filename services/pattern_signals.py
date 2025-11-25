@@ -135,9 +135,9 @@ class SignalEngine:
     def detectar_padrao8(self, historico: List[str]) -> Tuple[bool, Optional[str], Optional[str]]:
         seq = last_n(historico, 4)
         if len(seq) == 4 and seq[0] in ("V", "P"):
-            # A,B,B,A -> next expect B
             if seq[0] != seq[1] and seq[1] == seq[2] and seq[3] == seq[0]:
-                return True, seq[1], "medio"
+                if seq[1] in ("V", "P"):
+                    return True, seq[1], "medio"
         return False, None, None
 
     # --- Avaliação do histórico e decisão ---

@@ -660,11 +660,16 @@ def on_message(data: Dict):
                             # converter sugestão para cores do sistema
                             color_map = {'V': 'red', 'P': 'black', 'B': 'white'}
                             suggested_color = color_map.get(sugg, None)
+                            if suggested_color == 'white':
+                                suggested_color = None
                             # chance estimada simplificada baseada no label de confiança
                             chance_map = {'alto': 85, 'medio-alto': 75, 'medio': 65, 'baixo-medio': 55, 'baixo': 30}
                             chance_pct = chance_map.get(conf_label, 50)
                             targets = numbers_for_color(suggested_color) if suggested_color else []
-                            signal = {
+                            if not suggested_color:
+                                signal = None
+                            else:
+                                signal = {
                                 'id': f'ps_{int(time.time()*1000)}',
                                 'type': 'MEDIUM_SIGNAL' if conf_label in ('medio','medio-alto') else ('STRONG_SIGNAL' if conf_label in ('alto','medio-alto') else 'WEAK_SIGNAL'),
                                 'color': '#90ee90',
@@ -687,7 +692,7 @@ def on_message(data: Dict):
                                 'afterNumber': None,
                                 'afterColor': None,
                                 'suggestedText': f"Sinal P{pid}: apostar {suggested_color}" if suggested_color else 'Sinal'
-                            }
+                                }
                     # Se não foi gerado sinal pelo pattern engine, manter o detector original
                     if not signal:
                         signal = detect_best_double_signal(results_history)

@@ -1049,7 +1049,8 @@ function updateStats() {
   }
 
   // Atualizar UI
-  document.getElementById("statTotal").textContent = stats.total;
+  const totalEl = document.getElementById("statTotal");
+  if (totalEl) totalEl.textContent = stats.total;
   document.getElementById("statRed").textContent = stats.red;
   document.getElementById("statBlack").textContent = stats.black;
   document.getElementById("statWhite").textContent = stats.white;
@@ -1212,6 +1213,10 @@ function handleBackendSignal(signalData) {
       : "~60%",
     reasons: signalData.reasons || [],
   };
+  if (signal && signal.suggestedBet && signal.suggestedBet.color === "white") {
+    console.log("[DBG] Ignorando sinal do backend que sugere BRANCO.");
+    return;
+  }
   // Antes de exibir, checar cooldown/pendências
   if (pode_emitir_alerta()) {
     displaySignal(signal);
