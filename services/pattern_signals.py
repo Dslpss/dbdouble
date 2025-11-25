@@ -130,9 +130,6 @@ class SignalEngine:
         return False, None, None
 
     def detectar_padrao7(self, historico: List[str]) -> Tuple[bool, Optional[str], Optional[str]]:
-        window = last_n(historico, self.x_window)
-        if len(window) == self.x_window and "B" not in window:
-            return True, "B", "baixo"
         return False, None, None
 
     def detectar_padrao8(self, historico: List[str]) -> Tuple[bool, Optional[str], Optional[str]]:
