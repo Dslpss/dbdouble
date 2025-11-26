@@ -130,6 +130,17 @@ class SignalEngine:
         return False, None, None
 
     def detectar_padrao7(self, historico: List[str]) -> Tuple[bool, Optional[str], Optional[str]]:
+        if len(historico) < 6:
+            return False, None, None
+        streak = 0
+        for i in range(len(historico) - 1, -1, -1):
+            c = historico[i]
+            if c == "P":
+                streak += 1
+            else:
+                break
+        if streak >= 6:
+            return True, "V", "alto"
         return False, None, None
 
     def detectar_padrao8(self, historico: List[str]) -> Tuple[bool, Optional[str], Optional[str]]:
@@ -158,7 +169,7 @@ class SignalEngine:
             (8, self.detectar_padrao8, 60),
             (3, self.detectar_padrao3, 50),
             (5, self.detectar_padrao5, 40),
-            (7, self.detectar_padrao7, 10),
+            (7, self.detectar_padrao7, 105),
         ]
 
         matches = []
