@@ -102,6 +102,11 @@ sinais_emitidos_hoje = 0
 meta_sinais_dia = 100
 last_win_ts = None
 last_loss_ts = None
+# Rastreamento de sequências de wins entre losses
+win_streak_history = []  # Lista de sequências de wins entre losses
+current_win_streak = 0
+max_win_streak = 0
+signal_outcome_history = []  # Lista de outcomes {'outcome': 'win'|'loss', 'ts': timestamp}
 
 def decrementar_cooldown():
     global modo_stop, stop_counter, cooldown_contador, perdas_consecutivas
@@ -167,6 +172,7 @@ def registrar_resultado(acertou: bool):
             ativar_cooldown("stop")
 
 def registrar_resultado_sinal(confianca: str, acertou: bool):
+    global current_win_streak, max_win_streak, win_streak_history, signal_outcome_history
     try:
         lbl = confianca if confianca in ("alta", "media", "baixa") else "media"
         signal_stats[lbl]["total"] = signal_stats[lbl].get("total", 0) + 1
@@ -174,6 +180,28 @@ def registrar_resultado_sinal(confianca: str, acertou: bool):
         if acertou:
             signal_stats[lbl]["acertos"] = signal_stats[lbl].get("acertos", 0) + 1
             signal_stats["geral"]["acertos"] = signal_stats["geral"].get("acertos", 0) + 1
+            # Rastrear sequências de wins
+            current_win_streak += 1
+            if current_win_streak > max_win_streak:
+                max_win_streak = current_win_streak
+        else:
+            # Quando perde, salvar a sequência atual (se houver) e resetar
+            if current_win_streak > 0:
+                win_streak_history.append(current_win_streak)
+                # Manter apenas últimas 100 sequências
+                if len(win_streak_history) > 100:
+                    win_streak_history = win_streak_history[-100:]
+            current_win_streak = 0
+        
+        # Adicionar ao histórico de outcomes
+        signal_outcome_history.append({
+            'outcome': 'win' if acertou else 'loss',
+            'ts': int(time.time() * 1000)
+        })
+        # Manter apenas últimos 100 outcomes
+        if len(signal_outcome_history) > 100:
+            signal_outcome_history = signal_outcome_history[-100:]
+        
         calcular_taxas()
     except Exception:
         pass
@@ -326,10 +354,31 @@ async def api_signal_stats():
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+@app.get("/api/win_streaks")
+async def api_win_streaks():
+    """Retorna estatísticas de sequências de wins entre losses"""
+    try:
+        # Calcular média de wins entre losses
+        avg_wins = 0.0
+        if len(win_streak_history) > 0:
+            avg_wins = sum(win_streak_history) / len(win_streak_history)
+        
+        return {
+            "ok": True,
+            "currentStreak": current_win_streak,
+            "maxStreak": max_win_streak,
+            "averageWinsBetweenLosses": round(avg_wins, 2),
+            "streakHistory": win_streak_history[-10:] if len(win_streak_history) > 0 else [],
+            "totalStreaks": len(win_streak_history)
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 @app.post("/api/admin/reset")
 async def admin_reset_state(admin_user: dict = Depends(get_admin_user)):
     try:
         global results_history, pending_bets, cooldown_contador, perdas_consecutivas, modo_stop, stop_counter, modo_conservador, historico_alertas, round_index, signal_stats, sinais_perdidos_por_pausa, compensation_remaining
+        global win_streak_history, current_win_streak, max_win_streak, signal_outcome_history
         results_history = []
         pending_bets = []
         cooldown_contador = 0
@@ -341,6 +390,11 @@ async def admin_reset_state(admin_user: dict = Depends(get_admin_user)):
         round_index = 0
         sinais_perdidos_por_pausa = 0
         compensation_remaining = 0
+        # Reset win streak tracking
+        win_streak_history = []
+        current_win_streak = 0
+        max_win_streak = 0
+        signal_outcome_history = []
         signal_stats = {
             "alta": {"total": 0, "acertos": 0, "taxa": 0.0},
             "media": {"total": 0, "acertos": 0, "taxa": 0.0},

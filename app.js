@@ -271,6 +271,12 @@ async function initializeApp() {
       } catch (e) {}
     }
   } catch (e) {}
+  
+  // Buscar estatísticas de sequências de wins
+  try {
+    await fetchWinStreaks();
+  } catch (e) {}
+  
   connectSSE();
   updateStats();
   // Mostrar estado inicial de busca
@@ -832,6 +838,26 @@ function getConsecutiveSignalLosses() {
   return count;
 }
 
+// Fetch and update win streak statistics
+async function fetchWinStreaks() {
+  try {
+    const resp = await fetch(`${API_BASE_URL}/api/win_streaks`);
+    const data = await resp.json();
+    if (data && data.ok) {
+      // Update DOM elements
+      const currentStreakEl = document.getElementById("currentWinStreak");
+      const maxStreakEl = document.getElementById("maxWinStreak");
+      const avgWinsEl = document.getElementById("avgWinsBetweenLosses");
+      
+      if (currentStreakEl) currentStreakEl.textContent = String(data.currentStreak || 0);
+      if (maxStreakEl) maxStreakEl.textContent = String(data.maxStreak || 0);
+      if (avgWinsEl) avgWinsEl.textContent = String(data.averageWinsBetweenLosses || "0.00");
+    }
+  } catch (e) {
+    console.error("Error fetching win streaks:", e);
+  }
+}
+
 // Profit simulator removed: UI and logic for the profit/martingale card were removed.
 
 // Debug helpers: add counts manually from UI
@@ -920,6 +946,11 @@ function updateWinLossCounts(outcome, signalId, resolvedAt = null) {
     const pct = total > 0 ? Math.round((winCount / total) * 100) : 0;
     winsPctEl.textContent = `${pct}%`;
   }
+
+  // Atualizar estatísticas de sequências de wins
+  try {
+    fetchWinStreaks();
+  } catch (e) {}
 
   // Atualizar profit card caso esteja visível (simulador removido)
   try {
