@@ -851,7 +851,14 @@ async function fetchWinStreaks() {
       
       if (currentStreakEl) currentStreakEl.textContent = String(data.currentStreak || 0);
       if (maxStreakEl) maxStreakEl.textContent = String(data.maxStreak || 0);
-      if (avgWinsEl) avgWinsEl.textContent = String(data.averageWinsBetweenLosses || "0.00");
+      
+      if (avgWinsEl) {
+          if (data.totalStreaks === 0) {
+              avgWinsEl.textContent = "-";
+          } else {
+              avgWinsEl.textContent = String(data.averageWinsBetweenLosses || "0.00");
+          }
+      }
     }
   } catch (e) {
     console.error("Error fetching win streaks:", e);

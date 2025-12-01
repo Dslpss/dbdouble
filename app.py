@@ -271,6 +271,14 @@ async def load_stats_from_db():
             loaded_results = stats_doc.get("results_history", [])
             if loaded_results:
                 results_history = loaded_results
+            
+            # Verificação de consistência: Total de Wins não pode ser menor que Sequência Atual
+            total_wins = signal_stats["geral"].get("acertos", 0)
+            if current_win_streak > total_wins:
+                print(f"⚠️ Inconsistência detectada: Streak ({current_win_streak}) > Total Wins ({total_wins}). Corrigindo Total Wins.")
+                signal_stats["geral"]["acertos"] = current_win_streak
+                signal_stats["geral"]["total"] = max(signal_stats["geral"].get("total", 0), current_win_streak)
+                
             print(f"✅ Estatísticas carregadas do DB: {len(win_streak_history)} streaks, max: {max_win_streak}, results: {len(results_history)}")
     except Exception as e:
         print(f"Erro ao carregar stats do DB: {e}")
