@@ -203,6 +203,12 @@ def registrar_resultado_sinal(confianca: str, acertou: bool):
             signal_outcome_history = signal_outcome_history[-100:]
         
         calcular_taxas()
+        
+        # Salvar no banco de dados de forma assíncrona
+        try:
+            asyncio.create_task(save_stats_to_db())
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -217,6 +223,57 @@ def calcular_taxas():
 
 def obter_estatisticas() -> Dict:
     return signal_stats
+
+async def save_stats_to_db():
+    """Salva estatísticas no MongoDB para persistência"""
+    try:
+        if db_module.db is None:
+            return
+        
+        stats_doc = {
+            "_id": "global_stats",
+            "signal_stats": signal_stats,
+            "last_win_ts": last_win_ts,
+            "last_loss_ts": last_loss_ts,
+            "current_win_streak": current_win_streak,
+            "max_win_streak": max_win_streak,
+            "win_streak_history": win_streak_history[-100:],  # últimas 100
+            "signal_outcome_history": signal_outcome_history[-100:],  # últimas 100
+            "results_history": results_history[-50:],  # Persistir últimos 50 resultados
+            "updated_at": int(time.time() * 1000)
+        }
+        
+        await db_module.db.stats.update_one(
+            {"_id": "global_stats"},
+            {"$set": stats_doc},
+            upsert=True
+        )
+    except Exception as e:
+        print(f"Erro ao salvar stats no DB: {e}")
+
+async def load_stats_from_db():
+    """Carrega estatísticas do MongoDB na inicialização"""
+    global signal_stats, last_win_ts, last_loss_ts, current_win_streak, max_win_streak, win_streak_history, signal_outcome_history, results_history
+    try:
+        if db_module.db is None:
+            return
+        
+        stats_doc = await db_module.db.stats.find_one({"_id": "global_stats"})
+        if stats_doc:
+            signal_stats.update(stats_doc.get("signal_stats", {}))
+            last_win_ts = stats_doc.get("last_win_ts")
+            last_loss_ts = stats_doc.get("last_loss_ts")
+            current_win_streak = stats_doc.get("current_win_streak", 0)
+            max_win_streak = stats_doc.get("max_win_streak", 0)
+            win_streak_history = stats_doc.get("win_streak_history", [])
+            signal_outcome_history = stats_doc.get("signal_outcome_history", [])
+            # Carregar histórico de resultados se existir
+            loaded_results = stats_doc.get("results_history", [])
+            if loaded_results:
+                results_history = loaded_results
+            print(f"✅ Estatísticas carregadas do DB: {len(win_streak_history)} streaks, max: {max_win_streak}, results: {len(results_history)}")
+    except Exception as e:
+        print(f"Erro ao carregar stats do DB: {e}")
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
@@ -401,6 +458,15 @@ async def admin_reset_state(admin_user: dict = Depends(get_admin_user)):
             "baixa": {"total": 0, "acertos": 0, "taxa": 0.0},
             "geral": {"total": 0, "acertos": 0, "taxa": 0.0},
         }
+        
+        # Limpar coleção de stats no MongoDB
+        try:
+            if db_module.db is not None:
+                await db_module.db.stats.delete_many({})
+                print("✅ Coleção de stats limpa no MongoDB")
+        except Exception as e:
+            print(f"Erro ao limpar stats no DB: {e}")
+            
         try:
             base = os.path.dirname(os.path.abspath(__file__))
             for fname in ("platt_params.json", "pattern_stats.json"):
@@ -527,6 +593,13 @@ async def startup_ws_client():
     Isso faz o backend começar a receber resultados mesmo sem cliente SSE conectado.
     """
     global ws_connection
+    
+    # Carregar estatísticas do banco de dados
+    try:
+        await load_stats_from_db()
+    except Exception as e:
+        print(f"[startup] Falha ao carregar stats do DB: {e}")
+    
     try:
         if ws_connection is None:
             ws_connection = WSClient(CONFIG.WS_URL, on_message)
@@ -578,6 +651,12 @@ def on_message(data: Dict):
         # Manter apenas últimos 100 resultados
         if len(results_history) > 100:
             results_history = results_history[-100:]
+            
+        # Salvar no banco de dados de forma assíncrona
+        try:
+            asyncio.create_task(save_stats_to_db())
+        except Exception:
+            pass
         
         # Notificar clientes SSE com resultado
         result_payload = {"type": "double_result", "data": parsed}
@@ -633,6 +712,7 @@ def on_message(data: Dict):
                             pass
                         try:
                             last_win_ts = now_ts
+                            asyncio.create_task(save_stats_to_db())
                         except Exception:
                             pass
                         # Enviar SSE informando o resultado
@@ -666,6 +746,7 @@ def on_message(data: Dict):
                                 pass
                             try:
                                 last_loss_ts = now_ts
+                                asyncio.create_task(save_stats_to_db())
                             except Exception:
                                 pass
                             bet_payload = {"type": "bet_result", "data": pb}
