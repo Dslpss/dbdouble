@@ -830,14 +830,21 @@ function addSignalOutcome(outcome) {
 }
 
 function getConsecutiveSignalLosses() {
+  // Conta quantas vezes um LOSS foi diretamente seguido por outro LOSS
+  // LOSS → LOSS = +1
+  // LOSS → WIN = não conta
   let count = 0;
-  for (let i = 0; i < signalOutcomeHistory.length; i++) {
-    if (signalOutcomeHistory[i].outcome === "loss") count++;
-    else break; // parada ao encontrar um win
+  
+  // Percorrer do mais antigo para o mais recente (do final para o início do array)
+  for (let i = signalOutcomeHistory.length - 1; i > 0; i--) {
+    // Verifica se o atual é LOSS e o próximo (mais recente) também é LOSS
+    if (signalOutcomeHistory[i].outcome === "loss" && 
+        signalOutcomeHistory[i - 1].outcome === "loss") {
+      count++;
+    }
   }
-  // Retornar count - 1 para mostrar quantas vezes um loss foi seguido de outro
-  // Ex: 1 loss = 0, 2 losses = 1, 3 losses = 2
-  return count > 0 ? count - 1 : 0;
+  
+  return count;
 }
 
 // Fetch and update win streak statistics
