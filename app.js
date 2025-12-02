@@ -959,6 +959,15 @@ function updateWinLossCounts(outcome, signalId, resolvedAt = null) {
     fetchWinStreaks();
   } catch (e) {}
 
+  // Atualizar perdas consecutivas
+  try {
+    const consecutiveLossesEl = document.getElementById("consecutiveLosses");
+    if (consecutiveLossesEl) {
+      const lossCount = getConsecutiveSignalLosses();
+      consecutiveLossesEl.textContent = String(lossCount);
+    }
+  } catch (e) {}
+
   // Atualizar profit card caso esteja visível (simulador removido)
   try {
     if (typeof updateProfitCard === "function") updateProfitCard();
