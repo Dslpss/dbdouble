@@ -835,7 +835,9 @@ function getConsecutiveSignalLosses() {
     if (signalOutcomeHistory[i].outcome === "loss") count++;
     else break; // parada ao encontrar um win
   }
-  return count;
+  // Retornar count - 1 para mostrar quantas vezes um loss foi seguido de outro
+  // Ex: 1 loss = 0, 2 losses = 1, 3 losses = 2
+  return count > 0 ? count - 1 : 0;
 }
 
 // Fetch and update win streak statistics
