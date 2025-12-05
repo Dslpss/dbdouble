@@ -1162,8 +1162,10 @@ def verabet_on_message(data: Dict):
                         except:
                             pass
                     
-                    # Só adicionar aos pendentes se pelo menos um cliente recebeu o sinal
-                    if clients_notified > 0 and CONFIG.MARTINGALE_ENABLED:
+                    
+                    # SEMPRE adicionar aos pendentes se martingale estiver ativo, mesmo sem clientes
+                    # Isso garante que o histórico de wins/losses seja gerado 24/7
+                    if CONFIG.MARTINGALE_ENABLED:
                         pb = {
                             'id': signal.get('id'),
                             'patternKey': signal.get('patternKey'),
@@ -1178,9 +1180,11 @@ def verabet_on_message(data: Dict):
                             'confLabel': signal.get('confLabel', 'media'),
                         }
                         verabet_pending_bets.append(pb)
-                        print(f"[VeraBet] Sinal enviado para {clients_notified} cliente(s)")
-                    elif clients_notified == 0:
-                        print(f"[VeraBet] Sinal descartado - nenhum cliente conectado")
+                        
+                        if clients_notified > 0:
+                            print(f"[VeraBet] Sinal enviado para {clients_notified} cliente(s)")
+                        else:
+                            print(f"[VeraBet] Sinal registrado internamente (sem clientes conectados)")
             except Exception as e:
                 print(f"[VeraBet] Erro na detecção de sinal: {e}")
 
