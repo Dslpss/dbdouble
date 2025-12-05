@@ -918,6 +918,459 @@ def on_message(data: Dict):
                 # Ignorar erros na detecção de sinais
                 pass
 
+# ============================================================
+# VERABET DOUBLE INTEGRATION
+# ============================================================
+from services.verabet_client import VeraBetClient, parse_verabet_result, fetch_initial_history
+from services.verabet_patterns import VeraBetPatternEngine
+
+# Estado global VeraBet (separado do PlayNaBet)
+verabet_results_history: List[Dict] = []
+verabet_ws_connection: VeraBetClient = None
+verabet_ws_connected = False
+verabet_event_clients: List[asyncio.Queue] = []
+verabet_pending_bets: List[Dict] = []
+verabet_round_index = 0
+verabet_signal_stats = {
+    "alta": {"total": 0, "acertos": 0, "taxa": 0.0},
+    "media": {"total": 0, "acertos": 0, "taxa": 0.0},
+    "baixa": {"total": 0, "acertos": 0, "taxa": 0.0},
+    "geral": {"total": 0, "acertos": 0, "taxa": 0.0}
+}
+verabet_win_streak_history = []
+verabet_current_win_streak = 0
+verabet_max_win_streak = 0
+verabet_last_win_ts = None
+verabet_last_loss_ts = None
+
+# VeraBet pattern engine instance (motor dedicado para VeraBet)
+try:
+    verabet_pattern_engine = VeraBetPatternEngine()
+    print("✅ VeraBet Pattern Engine inicializado")
+except Exception as e:
+    verabet_pattern_engine = None
+    print(f"⚠️ Erro ao inicializar VeraBet Pattern Engine: {e}")
+
+async def save_verabet_stats_to_db():
+    """Salva estatísticas do VeraBet no MongoDB para persistência"""
+    try:
+        if db_module.db is None:
+            return
+        
+        stats_doc = {
+            "_id": "verabet_stats",
+            "signal_stats": verabet_signal_stats,
+            "last_win_ts": verabet_last_win_ts,
+            "last_loss_ts": verabet_last_loss_ts,
+            "current_win_streak": verabet_current_win_streak,
+            "max_win_streak": verabet_max_win_streak,
+            "win_streak_history": verabet_win_streak_history[-100:],  # últimas 100
+            "results_history": verabet_results_history[-50:],  # últimos 50 resultados
+            "updated_at": int(time.time() * 1000)
+        }
+        
+        await db_module.db.stats.update_one(
+            {"_id": "verabet_stats"},
+            {"$set": stats_doc},
+            upsert=True
+        )
+    except Exception as e:
+        print(f"[VeraBet] Erro ao salvar stats no DB: {e}")
+
+async def load_verabet_stats_from_db():
+    """Carrega estatísticas do VeraBet do MongoDB na inicialização"""
+    global verabet_signal_stats, verabet_last_win_ts, verabet_last_loss_ts
+    global verabet_current_win_streak, verabet_max_win_streak, verabet_win_streak_history
+    global verabet_results_history
+    try:
+        if db_module.db is None:
+            return
+        
+        stats_doc = await db_module.db.stats.find_one({"_id": "verabet_stats"})
+        if stats_doc:
+            verabet_signal_stats.update(stats_doc.get("signal_stats", {}))
+            verabet_last_win_ts = stats_doc.get("last_win_ts")
+            verabet_last_loss_ts = stats_doc.get("last_loss_ts")
+            verabet_current_win_streak = stats_doc.get("current_win_streak", 0)
+            verabet_max_win_streak = stats_doc.get("max_win_streak", 0)
+            verabet_win_streak_history = stats_doc.get("win_streak_history", [])
+            
+            # Carregar histórico de resultados se existir
+            loaded_results = stats_doc.get("results_history", [])
+            if loaded_results:
+                verabet_results_history = loaded_results
+            
+            print(f"✅ [VeraBet] Estatísticas carregadas do DB: {len(verabet_win_streak_history)} streaks, max: {verabet_max_win_streak}, results: {len(verabet_results_history)}")
+    except Exception as e:
+        print(f"[VeraBet] Erro ao carregar stats do DB: {e}")
+
+
+def verabet_on_message(data: Dict):
+    """Callback para mensagens do cliente VeraBet"""
+    global verabet_results_history, verabet_ws_connected, verabet_round_index
+    
+    if data.get("type") == "status":
+        verabet_ws_connected = data.get("connected", False)
+        message = f"event: status\ndata: {json.dumps(data)}\n\n"
+        for queue in verabet_event_clients:
+            try:
+                queue.put_nowait(message)
+            except:
+                pass
+        return
+    
+    # Processar resultado do Double
+    if data.get("source") == "verabet":
+        verabet_round_index += 1
+        
+        # Evitar duplicatas
+        if verabet_results_history:
+            last = verabet_results_history[-1]
+            if last.get("round_id") == data.get("round_id"):
+                return
+        
+        verabet_results_history.append(data)
+        if len(verabet_results_history) > 100:
+            verabet_results_history = verabet_results_history[-100:]
+        
+        # Notificar clientes SSE
+        result_payload = {"type": "double_result", "data": data}
+        message = f"event: double_result\ndata: {json.dumps(result_payload)}\n\n"
+        for queue in verabet_event_clients:
+            try:
+                queue.put_nowait(message)
+            except:
+                pass
+        
+        # Avaliar pendentes
+        signal_just_resolved = False  # Flag para bloquear novo sinal após resolução
+        try:
+            if CONFIG.MARTINGALE_ENABLED and verabet_pending_bets:
+                res_color = data.get('color')
+                now_ts = int(time.time() * 1000)
+                remove_ids = []
+                
+                print(f"[VeraBet] Avaliando {len(verabet_pending_bets)} pendente(s) | Resultado: {res_color}")
+                
+                for pb in list(verabet_pending_bets):
+                    attempts_left = pb.get('attemptsLeft', CONFIG.MARTINGALE_MAX_ATTEMPTS)
+                    target_color = pb.get('color')
+                    
+                    created_round = pb.get('createdRound')
+                    if created_round is not None and created_round == verabet_round_index:
+                        print(f"[VeraBet] Pulando pendente {pb.get('id')} - mesma rodada de criação")
+                        continue
+                    
+                    protect_white = pb.get('protect_white', False)
+                    is_win = (res_color == target_color) or (protect_white and res_color == 'white')
+                    
+                    print(f"[VeraBet] Pendente {pb.get('patternKey')} | Alvo: {target_color} | Saiu: {res_color} | Tentativas: {pb.get('attemptsUsed', 0)+1}/{3}")
+                    
+                    if is_win:
+                        pb['attemptsUsed'] = pb.get('attemptsUsed', 0) + 1
+                        pb['resolved'] = True
+                        pb['result'] = 'win'
+                        pb['resolvedAt'] = now_ts
+                        verabet_registrar_resultado_sinal(pb.get('confLabel', 'media'), True)
+                        bet_payload = {"type": "bet_result", "data": pb}
+                        bet_message = f"event: bet_result\ndata: {json.dumps(bet_payload)}\n\n"
+                        for queue in verabet_event_clients:
+                            try:
+                                queue.put_nowait(bet_message)
+                            except:
+                                pass
+                        remove_ids.append(pb.get('id'))
+                        signal_just_resolved = True
+                        print(f"[VeraBet] ✅ WIN detectado para {pb.get('patternKey')} após {pb['attemptsUsed']} tentativa(s)")
+                    else:
+                        pb['attemptsLeft'] = attempts_left - 1
+                        pb['attemptsUsed'] = pb.get('attemptsUsed', 0) + 1
+                        print(f"[VeraBet] ❌ Não acertou - tentativas restantes: {pb['attemptsLeft']}")
+                        if pb['attemptsLeft'] <= 0:
+                            pb['resolved'] = True
+                            pb['result'] = 'loss'
+                            pb['resolvedAt'] = now_ts
+                            verabet_registrar_resultado_sinal(pb.get('confLabel', 'media'), False)
+                            bet_payload = {"type": "bet_result", "data": pb}
+                            bet_message = f"event: bet_result\ndata: {json.dumps(bet_payload)}\n\n"
+                            for queue in verabet_event_clients:
+                                try:
+                                    queue.put_nowait(bet_message)
+                                except:
+                                    pass
+                            remove_ids.append(pb.get('id'))
+                            signal_just_resolved = True
+                            print(f"[VeraBet] ❌ LOSS detectado para {pb.get('patternKey')} após 3 tentativas")
+                
+                if remove_ids:
+                    verabet_pending_bets[:] = [p for p in verabet_pending_bets if p.get('id') not in remove_ids]
+        except Exception as e:
+            print(f"[VeraBet] Erro ao avaliar pendentes: {e}")
+        
+        
+        # Detectar sinal usando VeraBetPatternEngine
+        # Só processar sinais se houver clientes SSE conectados para recebê-los
+        # E se não houver sinais pendentes (para evitar múltiplos sinais ativos)
+        # E se não acabamos de resolver um sinal (dar tempo ao usuário)
+        if len(verabet_results_history) >= 3 and verabet_pattern_engine and len(verabet_event_clients) > 0:
+            try:
+                # VeraBet SEMPRE bloqueia sinais enquanto houver pendente (independente de CONFIG)
+                # Também bloqueia se acabamos de resolver um sinal nesta rodada
+                if verabet_pending_bets or signal_just_resolved:
+                    # Há sinal pendente ou acabamos de resolver, não detectar novo
+                    if signal_just_resolved:
+                        print(f"[VeraBet] Bloqueando novo sinal - acabou de resolver um")
+                    signal = None
+                else:
+                    # Converter histórico para formato V/P/B
+                    short_hist = []
+                    for r in verabet_results_history:
+                        c = r.get('color')
+                        if c == 'red':
+                            short_hist.append('V')
+                        elif c == 'black':
+                            short_hist.append('P')
+                        else:
+                            short_hist.append('B')
+                    
+                    # Usar o método gerar_sinal do VeraBetPatternEngine
+                    signal = verabet_pattern_engine.gerar_sinal(short_hist)
+                    
+                    # Adicionar informação do último resultado ao sinal
+                    if signal and verabet_results_history:
+                        last_result = verabet_results_history[-1]
+                        last_num = last_result.get('number', '?')
+                        last_color = last_result.get('color', '')
+                        last_color_name = 'Vermelho' if last_color == 'red' else 'Preto' if last_color == 'black' else 'Branco'
+                        suggested_color_name = 'Vermelho' if signal.get('color') == 'red' else 'Preto'
+                        
+                        # Atualizar descrição para mostrar o número que disparou
+                        signal['description'] = f"Após o {last_num} {last_color_name} → Aposte no {suggested_color_name}!"
+                        signal['lastNumber'] = last_num
+                        signal['lastColor'] = last_color
+                
+                if signal:
+                    print(f"[VeraBet] Sinal detectado: {signal.get('patternKey')} → {signal.get('color')} ({signal.get('chance')}%)")
+                    
+                    signal_payload = {"type": "signal", "data": signal}
+                    signal_message = f"event: signal\ndata: {json.dumps(signal_payload)}\n\n"
+                    clients_notified = 0
+                    for queue in verabet_event_clients:
+                        try:
+                            queue.put_nowait(signal_message)
+                            clients_notified += 1
+                        except:
+                            pass
+                    
+                    # Só adicionar aos pendentes se pelo menos um cliente recebeu o sinal
+                    if clients_notified > 0 and CONFIG.MARTINGALE_ENABLED:
+                        pb = {
+                            'id': signal.get('id'),
+                            'patternKey': signal.get('patternKey'),
+                            'color': signal.get('color'),
+                            'numbers': signal.get('targets', []),
+                            'chance': signal.get('chance', 0),
+                            'createdAt': int(time.time() * 1000),
+                            'createdRound': verabet_round_index,
+                            'attemptsLeft': signal.get('maxAttempts', 3),
+                            'attemptsUsed': 0,
+                            'protect_white': signal.get('protect_white', False),
+                            'confLabel': signal.get('confLabel', 'media'),
+                        }
+                        verabet_pending_bets.append(pb)
+                        print(f"[VeraBet] Sinal enviado para {clients_notified} cliente(s)")
+                    elif clients_notified == 0:
+                        print(f"[VeraBet] Sinal descartado - nenhum cliente conectado")
+            except Exception as e:
+                print(f"[VeraBet] Erro na detecção de sinal: {e}")
+
+def verabet_registrar_resultado_sinal(confianca: str, acertou: bool):
+    global verabet_current_win_streak, verabet_max_win_streak, verabet_win_streak_history
+    global verabet_last_win_ts, verabet_last_loss_ts
+    try:
+        lbl = confianca if confianca in ("alta", "media", "baixa") else "media"
+        verabet_signal_stats[lbl]["total"] = verabet_signal_stats[lbl].get("total", 0) + 1
+        verabet_signal_stats["geral"]["total"] = verabet_signal_stats["geral"].get("total", 0) + 1
+        if acertou:
+            verabet_signal_stats[lbl]["acertos"] = verabet_signal_stats[lbl].get("acertos", 0) + 1
+            verabet_signal_stats["geral"]["acertos"] = verabet_signal_stats["geral"].get("acertos", 0) + 1
+            verabet_current_win_streak += 1
+            if verabet_current_win_streak > verabet_max_win_streak:
+                verabet_max_win_streak = verabet_current_win_streak
+            verabet_last_win_ts = int(time.time() * 1000)
+        else:
+            if verabet_current_win_streak > 0:
+                verabet_win_streak_history.append(verabet_current_win_streak)
+                if len(verabet_win_streak_history) > 100:
+                    verabet_win_streak_history = verabet_win_streak_history[-100:]
+            verabet_current_win_streak = 0
+            verabet_last_loss_ts = int(time.time() * 1000)
+        
+        # Salvar no banco de dados de forma assíncrona
+        try:
+            asyncio.create_task(save_verabet_stats_to_db())
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+# VeraBet Routes
+@app.get("/verabet", response_class=HTMLResponse)
+async def verabet_page(request: Request):
+    """Página VeraBet Double - requer autenticação"""
+    try:
+        await get_current_user(request)
+    except Exception:
+        return HTMLResponse(content="", status_code=302, headers={"Location": "/auth"})
+    
+    html_path = os.path.join(base_dir, "verabet.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse("<h1>VeraBet page not found</h1>", status_code=404)
+
+@app.get("/verabet_app.js")
+async def verabet_app_js():
+    js_path = os.path.join(base_dir, "verabet_app.js")
+    if os.path.exists(js_path):
+        return FileResponse(js_path, media_type="application/javascript")
+    return {"error": "File not found"}, 404
+
+@app.get("/verabet/api/status")
+async def verabet_status():
+    return {
+        "ok": True,
+        "wsConnected": verabet_ws_connected,
+        "hasToken": False,
+        "timestamp": int(time.time() * 1000)
+    }
+
+@app.get("/verabet/api/results")
+async def verabet_api_get_results(limit: int = 20):
+    return {
+        "ok": True,
+        "wsConnected": verabet_ws_connected,
+        "results_count": len(verabet_results_history),
+        "results": verabet_results_history[:limit],
+    }
+
+@app.get("/verabet/api/signal_stats")
+async def verabet_api_signal_stats():
+    try:
+        geral = verabet_signal_stats.get("geral", {})
+        total = int(geral.get("total", 0))
+        acertos = int(geral.get("acertos", 0))
+        perdas = max(0, total - acertos)
+        return {
+            "ok": True,
+            "wins": acertos,
+            "losses": perdas,
+            "lastWinTime": verabet_last_win_ts,
+            "lastLossTime": verabet_last_loss_ts,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.get("/verabet/api/win_streaks")
+async def verabet_api_win_streaks():
+    try:
+        avg_wins = 0.0
+        if len(verabet_win_streak_history) > 0:
+            avg_wins = sum(verabet_win_streak_history) / len(verabet_win_streak_history)
+        return {
+            "ok": True,
+            "currentStreak": verabet_current_win_streak,
+            "maxStreak": verabet_max_win_streak,
+            "consecutiveLosses": 0,  # Calculado baseado no streak (se streak=0, tivemos loss)
+            "averageWinsBetweenLosses": round(avg_wins, 2),
+            "streakHistory": verabet_win_streak_history[-10:] if len(verabet_win_streak_history) > 0 else [],
+            "totalStreaks": len(verabet_win_streak_history)
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.get("/verabet/events")
+async def verabet_events(request: Request):
+    """Server-Sent Events para VeraBet Double"""
+    async def event_generator():
+        global verabet_ws_connected, verabet_ws_connection
+        
+        queue = asyncio.Queue()
+        verabet_event_clients.append(queue)
+        
+        try:
+            yield f"event: status\ndata: {json.dumps({'type': 'status', 'connected': verabet_ws_connected, 'ts': int(time.time() * 1000)})}\n\n"
+            
+            if verabet_ws_connection is None:
+                verabet_ws_connection = VeraBetClient(verabet_on_message)
+                await verabet_ws_connection.start()
+            
+            last_heartbeat = time.time()
+            while True:
+                if await request.is_disconnected():
+                    break
+                
+                try:
+                    message = await asyncio.wait_for(queue.get(), timeout=0.1)
+                    yield message
+                except asyncio.TimeoutError:
+                    pass
+                
+                if time.time() - last_heartbeat >= 10:
+                    yield f"event: ping\ndata: {json.dumps({'type': 'ping', 'ts': int(time.time() * 1000)})}\n\n"
+                    last_heartbeat = time.time()
+                
+                await asyncio.sleep(0.1)
+        finally:
+            if queue in verabet_event_clients:
+                verabet_event_clients.remove(queue)
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
+
+@app.on_event("startup")
+async def startup_verabet_client():
+    """Iniciar cliente VeraBet na inicialização"""
+    global verabet_ws_connection, verabet_results_history
+    try:
+        # Carregar estatísticas do MongoDB
+        await load_verabet_stats_from_db()
+        
+        # Carregar histórico inicial (se não foi carregado do DB)
+        if len(verabet_results_history) == 0:
+            initial_history = await fetch_initial_history(limit=30)
+            if initial_history:
+                verabet_results_history = initial_history
+                print(f"[VeraBet] Histórico inicial carregado: {len(verabet_results_history)} resultados")
+        else:
+            print(f"[VeraBet] Histórico já carregado do DB: {len(verabet_results_history)} resultados")
+        
+        if verabet_ws_connection is None:
+            verabet_ws_connection = VeraBetClient(verabet_on_message)
+            await verabet_ws_connection.start()
+            print("[VeraBet] Cliente de polling iniciado")
+    except Exception as e:
+        print(f"[VeraBet] Falha ao iniciar cliente: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_verabet_client():
+    global verabet_ws_connection
+    try:
+        if verabet_ws_connection is not None:
+            await verabet_ws_connection.stop()
+            print("[VeraBet] Cliente finalizado")
+    except Exception as e:
+        print(f"[VeraBet] Erro ao finalizar cliente: {e}")
+
+# ============================================================
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=3001)

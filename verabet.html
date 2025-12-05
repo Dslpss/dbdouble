@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DBcolor - Análise Double</title>
+    <title>DBcolor - VeraBet Double</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -11,7 +11,7 @@
       <!-- Header -->
       <header class="header">
         <h1>
-          DBcolor - Análise Double
+          DBcolor - VeraBet Double
           <span
             id="headerSquare"
             class="header-square"
@@ -35,10 +35,10 @@
 
       <!-- Navegação entre plataformas -->
       <nav class="platform-nav" style="display: flex; gap: 10px; margin-bottom: 16px; justify-content: center;">
-        <a href="/" class="platform-btn active" style="padding: 10px 20px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border-radius: 8px; text-decoration: none; font-weight: 600; transition: transform 0.2s;">
+        <a href="/" class="platform-btn" style="padding: 10px 20px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border-radius: 8px; text-decoration: none; font-weight: 600; transition: transform 0.2s;">
           PlayNaBet
         </a>
-        <a href="/verabet" class="platform-btn" style="padding: 10px 20px; background: linear-gradient(135deg, #11998e, #38ef7d); color: white; border-radius: 8px; text-decoration: none; font-weight: 600; transition: transform 0.2s;">
+        <a href="/verabet" class="platform-btn active" style="padding: 10px 20px; background: linear-gradient(135deg, #11998e, #38ef7d); color: white; border-radius: 8px; text-decoration: none; font-weight: 600; transition: transform 0.2s; box-shadow: 0 0 15px rgba(56, 239, 125, 0.5);">
           VeraBet
         </a>
       </nav>
@@ -98,16 +98,15 @@
       <!-- Game iframe (embed) -->
       <section class="game-section">
         <div class="game-container">
-          <!-- Some casinos block embedding via X-Frame-Options; add a fallback link below -->
           <div class="game-controls">
             <button id="reloadGameBtn" class="reload-btn">
               Recarregar jogo
             </button>
           </div>
           <iframe
-            id="playnaIframe"
-            src="https://playnabets.com/casino/soline/mobi_Dobrar"
-            title="Playna Bets - Soline"
+            id="verabetIframe"
+            src="https://vera.bet.br/games/banana/double-max"
+            title="VeraBet - Double Max"
             loading="lazy"
             referrerpolicy="no-referrer"
             allowfullscreen></iframe>
@@ -117,14 +116,18 @@
             margin-top: 8px;
             font-size: 0.9rem;
             color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
           ">
-          Se o jogo não carregar, abra em nova guia:
+          <span>⚠️ Para fazer login, abra em nova aba:</span>
           <a
-            href="https://playnabets.com/casino/soline/mobi_Dobrar"
+            href="https://vera.bet.br/games/banana/double-max"
             target="_blank"
             rel="noopener noreferrer"
-            >Abrir Playna Bets</a
-          >
+            style="padding: 8px 16px; background: linear-gradient(135deg, #11998e, #38ef7d); color: white; border-radius: 6px; text-decoration: none; font-weight: 600;"
+            >🎮 Abrir VeraBet (Nova Aba)</a>
         </div>
       </section>
 
@@ -169,7 +172,6 @@
               <span id="signalProbability"></span>
             </div>
           </div>
-          <!-- Ação sugerida removida: agora as sugestões numéricas não são exibidas -->
           <div class="signal-reasons" id="signalReasons"></div>
         </div>
       </section>
@@ -199,11 +201,6 @@
         </div>
       </section>
 
-      <!-- Profit simulator removed -->
-
-      <!-- Debug controls (removed) -->
-
-      <!-- Histórico de Sinais removido para simplificar a interface -->
       <audio
         id="signalAlertSound"
         src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
@@ -254,29 +251,12 @@
       </div>
     </div>
 
-    <script src="app.js?v=2"></script>
-    <div id="betSignupModal" class="modal" style="display: none">
-      <div class="modal-content">
-        <span class="close" id="closeBetSignup">&times;</span>
-        <h2 class="modal-title">Cadastro na Casa de Apostas</h2>
-        <p class="modal-description">
-          Crie sua conta na Playna Bets para utilizar os sinais com a casa
-          suportada.
-        </p>
-        <a
-          href="https://playnabets.com/cadastro?refId=NjMzMTRyZWZJZA=="
-          target="_blank"
-          rel="noopener noreferrer"
-          class="btn-primary"
-          style="text-decoration: none"
-          >Cadastrar na Playna Bets</a
-        >
-      </div>
-    </div>
+    <script src="verabet_app.js?v=1"></script>
+    
     <div id="infoModal" class="modal" style="display: none">
       <div class="modal-content">
         <span class="close" id="closeInfoModal">&times;</span>
-        <h2 class="modal-title">Como usar o DBcolor</h2>
+        <h2 class="modal-title">Como usar o DBcolor - VeraBet</h2>
         <p class="modal-description">
           O sistema analisa resultados em tempo real e emite alertas de cor
           quando padrões são detectados.
