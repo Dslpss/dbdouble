@@ -444,6 +444,10 @@ async def admin_reset_state(admin_user: dict = Depends(get_admin_user)):
     try:
         global results_history, pending_bets, cooldown_contador, perdas_consecutivas, modo_stop, stop_counter, modo_conservador, historico_alertas, round_index, signal_stats, sinais_perdidos_por_pausa, compensation_remaining
         global win_streak_history, current_win_streak, max_win_streak, signal_outcome_history
+        global signal_outcomes_history
+        global verabet_results_history, verabet_pending_bets, verabet_round_index
+        global verabet_signal_stats, verabet_win_streak_history, verabet_current_win_streak, verabet_max_win_streak
+        global verabet_last_win_ts, verabet_last_loss_ts
         results_history = []
         pending_bets = []
         cooldown_contador = 0
@@ -460,17 +464,36 @@ async def admin_reset_state(admin_user: dict = Depends(get_admin_user)):
         current_win_streak = 0
         max_win_streak = 0
         signal_outcome_history = []
+        signal_outcomes_history = []
         signal_stats = {
             "alta": {"total": 0, "acertos": 0, "taxa": 0.0},
             "media": {"total": 0, "acertos": 0, "taxa": 0.0},
             "baixa": {"total": 0, "acertos": 0, "taxa": 0.0},
             "geral": {"total": 0, "acertos": 0, "taxa": 0.0},
         }
+        verabet_results_history = []
+        verabet_pending_bets = []
+        verabet_round_index = 0
+        verabet_signal_stats = {
+            "alta": {"total": 0, "acertos": 0, "taxa": 0.0},
+            "media": {"total": 0, "acertos": 0, "taxa": 0.0},
+            "baixa": {"total": 0, "acertos": 0, "taxa": 0.0},
+            "geral": {"total": 0, "acertos": 0, "taxa": 0.0},
+        }
+        verabet_win_streak_history = []
+        verabet_current_win_streak = 0
+        verabet_max_win_streak = 0
+        verabet_last_win_ts = None
+        verabet_last_loss_ts = None
         
         # Limpar coleção de stats no MongoDB
         try:
             if db_module.db is not None:
                 await db_module.db.stats.delete_many({})
+                try:
+                    await db_module.db.stats.delete_one({"_id": "verabet_stats"})
+                except Exception:
+                    pass
                 print("✅ Coleção de stats limpa no MongoDB")
         except Exception as e:
             print(f"Erro ao limpar stats no DB: {e}")
