@@ -1109,10 +1109,9 @@ def verabet_on_message(data: Dict):
         
         
         # Detectar sinal usando VeraBetPatternEngine
-        # Só processar sinais se houver clientes SSE conectados para recebê-los
-        # E se não houver sinais pendentes (para evitar múltiplos sinais ativos)
-        # E se não acabamos de resolver um sinal (dar tempo ao usuário)
-        if len(verabet_results_history) >= 3 and verabet_pattern_engine and len(verabet_event_clients) > 0:
+        # Deve funcionar mesmo sem clientes SSE conectados — stats precisam persistir 24/7
+        # Ainda bloqueamos se houver pendentes ou se acabou de resolver um sinal
+        if len(verabet_results_history) >= 3 and verabet_pattern_engine:
             try:
                 # VeraBet SEMPRE bloqueia sinais enquanto houver pendente (independente de CONFIG)
                 # Também bloqueia se acabamos de resolver um sinal nesta rodada
