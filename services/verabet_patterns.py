@@ -250,18 +250,28 @@ class VeraBetPatternEngine:
         if not self.can_emit_signal():
             return {"signal": False, "reason": "cooldown", "candidates": matches}
         
-        # Ordenar por prioridade
-        matches.sort(key=lambda x: x["priority"], reverse=True)
-        chosen = matches[0]
-        
-        # Mapear sugestão para cor
+        v_votes = 0
+        p_votes = 0
+        for m in matches:
+            if m["suggestion"] == "V":
+                v_votes += m["priority"]
+            elif m["suggestion"] == "P":
+                p_votes += m["priority"]
+        majority = "V" if v_votes >= p_votes else "P"
+        group = [m for m in matches if m["suggestion"] == majority]
+        group.sort(key=lambda x: x["priority"], reverse=True)
+        chosen = group[0]
         color_map = {"V": "red", "P": "black"}
-        suggested_color = color_map.get(chosen["suggestion"])
-        
+        suggested_color = color_map.get(majority)
         if not suggested_color:
             return {"signal": False, "reason": "cor_invalida"}
-        
-        # Descrição do sinal
+        boost = 0
+        if len(group) >= 2:
+            boost += 7
+        chance_val = min(95, int(chosen["chance"]) + boost)
+        conf_val = chosen["confidence"]
+        if conf_val == "media" and chance_val >= 75:
+            conf_val = "alta"
         color_name = "Vermelho" if suggested_color == "red" else "Preto"
         descriptions = {
             1: f"Sequência de 5+ detectada → Aposte no {color_name}!",
@@ -273,14 +283,13 @@ class VeraBetPatternEngine:
             7: f"Sequência longa de 6+ → Aposte no {color_name}!",
             8: f"Padrão espelho → Aposte no {color_name}!",
         }
-        
         return {
             "signal": True,
             "pattern_id": chosen["pattern_id"],
             "color": suggested_color,
-            "suggestion": chosen["suggestion"],
-            "confidence": chosen["confidence"],
-            "chance": chosen["chance"],
+            "suggestion": majority,
+            "confidence": conf_val,
+            "chance": chance_val,
             "description": descriptions.get(chosen["pattern_id"], f"Padrão {chosen['pattern_id']} → Aposte no {color_name}!"),
             "candidates": matches,
         }

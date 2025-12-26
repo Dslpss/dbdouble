@@ -965,6 +965,7 @@ verabet_current_win_streak = 0
 verabet_max_win_streak = 0
 verabet_last_win_ts = None
 verabet_last_loss_ts = None
+verabet_signal_outcome_history = []  # Histórico de outcomes: [{'outcome': 'win'|'loss', 'ts': timestamp}]
 
 # VeraBet pattern engine instance (motor dedicado para VeraBet)
 try:
@@ -988,6 +989,7 @@ async def save_verabet_stats_to_db():
             "current_win_streak": verabet_current_win_streak,
             "max_win_streak": verabet_max_win_streak,
             "win_streak_history": verabet_win_streak_history[-100:],  # últimas 100
+            "signal_outcome_history": verabet_signal_outcome_history[-100:],  # últimos 100 outcomes
             "results_history": verabet_results_history[-50:],  # últimos 50 resultados
             "updated_at": int(time.time() * 1000)
         }
@@ -1017,6 +1019,8 @@ async def load_verabet_stats_from_db():
             verabet_current_win_streak = stats_doc.get("current_win_streak", 0)
             verabet_max_win_streak = stats_doc.get("max_win_streak", 0)
             verabet_win_streak_history = stats_doc.get("win_streak_history", [])
+            global verabet_signal_outcome_history
+            verabet_signal_outcome_history = stats_doc.get("signal_outcome_history", [])
             
             # Carregar histórico de resultados se existir
             loaded_results = stats_doc.get("results_history", [])
@@ -1212,11 +1216,18 @@ def verabet_on_message(data: Dict):
 
 def verabet_registrar_resultado_sinal(confianca: str, acertou: bool):
     global verabet_current_win_streak, verabet_max_win_streak, verabet_win_streak_history
-    global verabet_last_win_ts, verabet_last_loss_ts
+    global verabet_last_win_ts, verabet_last_loss_ts, verabet_signal_outcome_history
     try:
         lbl = confianca if confianca in ("alta", "media", "baixa") else "media"
         verabet_signal_stats[lbl]["total"] = verabet_signal_stats[lbl].get("total", 0) + 1
         verabet_signal_stats["geral"]["total"] = verabet_signal_stats["geral"].get("total", 0) + 1
+        
+        # Registrar outcome no histórico
+        outcome = "win" if acertou else "loss"
+        verabet_signal_outcome_history.append({"outcome": outcome, "ts": int(time.time() * 1000)})
+        if len(verabet_signal_outcome_history) > 100:
+            verabet_signal_outcome_history = verabet_signal_outcome_history[-100:]
+        
         if acertou:
             verabet_signal_stats[lbl]["acertos"] = verabet_signal_stats[lbl].get("acertos", 0) + 1
             verabet_signal_stats["geral"]["acertos"] = verabet_signal_stats["geral"].get("acertos", 0) + 1
@@ -1239,6 +1250,16 @@ def verabet_registrar_resultado_sinal(confianca: str, acertou: bool):
             pass
     except Exception:
         pass
+
+def verabet_get_consecutive_losses():
+    """Conta quantos losses consecutivos existem no histórico (do mais recente para trás)"""
+    count = 0
+    for entry in reversed(verabet_signal_outcome_history):
+        if entry.get("outcome") == "loss":
+            count += 1
+        else:
+            break  # Parou de ser loss consecutivo
+    return count
 
 # VeraBet Routes
 @app.get("/verabet", response_class=HTMLResponse)
@@ -1303,11 +1324,14 @@ async def verabet_api_win_streaks():
         avg_wins = 0.0
         if len(verabet_win_streak_history) > 0:
             avg_wins = sum(verabet_win_streak_history) / len(verabet_win_streak_history)
+        # Calcular losses consecutivos do histórico de outcomes
+        consecutive_losses = verabet_get_consecutive_losses()
+        
         return {
             "ok": True,
             "currentStreak": verabet_current_win_streak,
             "maxStreak": verabet_max_win_streak,
-            "consecutiveLosses": 0,  # Calculado baseado no streak (se streak=0, tivemos loss)
+            "consecutiveLosses": consecutive_losses,
             "averageWinsBetweenLosses": round(avg_wins, 2),
             "streakHistory": verabet_win_streak_history[-10:] if len(verabet_win_streak_history) > 0 else [],
             "totalStreaks": len(verabet_win_streak_history)

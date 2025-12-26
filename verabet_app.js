@@ -189,6 +189,7 @@ async function initializeApp() {
     if (wdata && wdata.ok) {
       currentWinStreak = wdata.currentStreak || 0;
       maxWinStreak = wdata.maxStreak || 0;
+      consecutiveLosses = wdata.consecutiveLosses || 0;
       updateWinStreakUI();
       
       const avgEl = document.getElementById("avgWinsBetweenLosses");
