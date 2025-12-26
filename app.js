@@ -886,7 +886,7 @@ function updateHistoryWithOutcome(
   updatePendingStatusUI();
 }
 
-// Atualiza o texto do elemento de pendência para mostrar 'Tentativa X/3'
+// Atualiza o texto do elemento de pendência para mostrar 'Tentativa X/Y'
 function updatePendingStatusUI() {
   const pendingStatusEl = document.getElementById("signalPendingStatus");
   if (!pendingStatusEl) return;
@@ -899,8 +899,8 @@ function updatePendingStatusUI() {
   // Mostrar estado do sinal mais recente (último adicionado)
   const p = pendingSignals[pendingSignals.length - 1];
   // currentAttempt é o próximo resultado a ser avaliado (avaliadoRounds começa em 0)
-  const currentAttempt = (p.evaluatedRounds || 0) + 1;
   const max = userMaxAttempts || 3;  // Usa configuração do usuário
+  const currentAttempt = Math.min((p.evaluatedRounds || 0) + 1, max);  // Limitar ao máximo
   pendingStatusEl.style.display = "block";
   pendingStatusEl.textContent = `Tentativa ${currentAttempt}/${max}`;
 }

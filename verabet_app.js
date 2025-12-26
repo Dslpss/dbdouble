@@ -583,8 +583,8 @@ function updatePendingStatusUI() {
   }
   
   const p = pendingSignals[pendingSignals.length - 1];
-  const currentAttempt = (p.evaluatedRounds || 0) + 1;
   const max = userMaxAttempts || 3;  // Usa configuração do usuário
+  const currentAttempt = Math.min((p.evaluatedRounds || 0) + 1, max);  // Limitar ao máximo
   pendingStatusEl.style.display = "block";
   pendingStatusEl.textContent = `Tentativa ${currentAttempt}/${max}`;
 }
