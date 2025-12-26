@@ -904,7 +904,7 @@ async def admin_reset_state(admin_user: dict = Depends(get_admin_user)):
         global signal_outcomes_history
         global verabet_results_history, verabet_pending_bets, verabet_round_index
         global verabet_signal_stats, verabet_win_streak_history, verabet_current_win_streak, verabet_max_win_streak
-        global verabet_last_win_ts, verabet_last_loss_ts
+        global verabet_last_win_ts, verabet_last_loss_ts, verabet_signal_outcome_history
         results_history = []
         pending_bets = []
         cooldown_contador = 0
@@ -942,6 +942,7 @@ async def admin_reset_state(admin_user: dict = Depends(get_admin_user)):
         verabet_max_win_streak = 0
         verabet_last_win_ts = None
         verabet_last_loss_ts = None
+        verabet_signal_outcome_history = []
         
         # Limpar coleção de stats e signal_history no MongoDB
         try:
