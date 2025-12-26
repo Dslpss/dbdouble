@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from pymongo import ReturnDocument
 import db as db_module
+import time
 from models.auth_models import UserIn, UserOut, Token
 from auth_utils import get_password_hash, verify_password
 from jwt_utils import create_access_token, decode_access_token
@@ -11,6 +12,43 @@ from jwt_utils import create_access_token, decode_access_token
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
+
+# Fuso horário de Brasília (UTC-3)
+try:
+    from zoneinfo import ZoneInfo
+    BRAZIL_TZ = ZoneInfo("America/Sao_Paulo")
+except ImportError:
+    # Fallback para Python < 3.9
+    from datetime import timezone
+    BRAZIL_TZ = timezone(timedelta(hours=-3))
+
+def get_brazil_time():
+    """Retorna a hora atual no fuso horário de Brasília"""
+    return datetime.now(BRAZIL_TZ)
+
+async def log_user_activity(user_email: str, action: str, details: str = "", request: Request = None):
+    """Registra atividade do usuário no MongoDB para auditoria"""
+    try:
+        if db_module.db is None:
+            return
+        
+        brazil_now = get_brazil_time()
+        
+        log_doc = {
+            "email": user_email,
+            "action": action,  # login, logout, page_access, config_change, admin_action
+            "details": details,
+            "ip": request.client.host if request and request.client else "unknown",
+            "userAgent": request.headers.get("user-agent", "unknown") if request else "unknown",
+            "timestamp": int(time.time() * 1000),
+            "datetime": brazil_now.replace(tzinfo=None)  # Salvar sem timezone info para MongoDB
+        }
+        
+        await db_module.db.activity_logs.insert_one(log_doc)
+    except Exception as e:
+        print(f"Erro ao registrar log de atividade: {e}")
+
+
 
 
 async def get_token_from_request(request: Request) -> Optional[str]:
@@ -47,8 +85,8 @@ async def register(user: UserIn):
         "enabled_patterns": user.enabled_patterns or [],
         "receive_alerts": user.receive_alerts if user.receive_alerts is not None else True,
         "is_admin": is_admin,
-        "created_at": datetime.utcnow(),
-        "last_login": datetime.utcnow(),
+        "created_at": get_brazil_time().replace(tzinfo=None),
+        "last_login": get_brazil_time().replace(tzinfo=None),
     }
     res = await db_module.db.users.insert_one(doc)
     return UserOut(
@@ -64,17 +102,21 @@ async def register(user: UserIn):
 
 
 @router.post("/login", response_model=Token)
-async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
+async def login(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
     # OAuth2PasswordRequestForm uses username as field; pass email in username
     user = await db_module.db.users.find_one({"email": form_data.username})
     if not user or not verify_password(form_data.password, user.get("password_hash")):
+        # Log failed attempt
+        await log_user_activity(form_data.username, "login_failed", "Credenciais inválidas", request)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais inválidas")
     # Update last_login
     await db_module.db.users.update_one(
         {"email": user["email"]},
-        {"$set": {"last_login": datetime.utcnow()}}
+        {"$set": {"last_login": get_brazil_time().replace(tzinfo=None)}}
     )
     token = create_access_token({"sub": user["email"]})
+    # Log successful login
+    await log_user_activity(user["email"], "login", "Login bem-sucedido", request)
     # Set cookie for session persistence
     response.set_cookie(
         key="access_token",
@@ -180,10 +222,44 @@ async def admin_stats(admin_user: dict = Depends(get_admin_user)):
         {"$group": {"_id": None, "total": {"$sum": "$bankroll"}}}
     ]).to_list(length=1)
     total_bankroll_value = total_bankroll[0]["total"] if total_bankroll else 0
+    
+    # Estatísticas de sinais (últimos 30 dias)
+    from datetime import timedelta
+    cutoff = datetime.utcnow() - timedelta(days=30)
+    cutoff_ts = int(cutoff.timestamp() * 1000)
+    
+    try:
+        signals = await db_module.db.signal_history.find({"createdAt": {"$gte": cutoff_ts}}).to_list(length=10000)
+        total_signals = len(signals)
+        wins = sum(1 for s in signals if s.get("result") == "win")
+        signal_rate = round((wins / total_signals * 100), 2) if total_signals > 0 else 0
+    except Exception:
+        total_signals = 0
+        wins = 0
+        signal_rate = 0
+    
+    # Usuários ativos (últimas 24h)
+    active_cutoff = datetime.utcnow() - timedelta(hours=24)
+    try:
+        active_users = await db_module.db.users.count_documents({"last_login": {"$gte": active_cutoff}})
+    except Exception:
+        active_users = 0
+    
+    # Total de logs
+    try:
+        total_logs = await db_module.db.activity_logs.count_documents({})
+    except Exception:
+        total_logs = 0
+    
     return {
         "total_users": total_users,
         "total_bankroll": float(total_bankroll_value),
         "database_name": db_module.db.name,
+        "total_signals_30d": total_signals,
+        "wins_30d": wins,
+        "signal_rate_30d": signal_rate,
+        "active_users_24h": active_users,
+        "total_logs": total_logs
     }
 
 @router.get("/admin/users")
@@ -214,3 +290,43 @@ async def admin_users(admin_user: dict = Depends(get_admin_user)):
             "last_login": u.get("last_login"),
         }
     return {"users": [ _normalize(u) for u in users ]}
+
+@router.get("/admin/logs")
+async def admin_logs(admin_user: dict = Depends(get_admin_user), page: int = 1, limit: int = 50, action: str = None):
+    """Retorna logs de atividade com paginação e filtro opcional"""
+    try:
+        query = {}
+        if action:
+            query["action"] = action
+        
+        # Contar total
+        total = await db_module.db.activity_logs.count_documents(query)
+        
+        # Buscar com paginação
+        skip = (page - 1) * limit
+        logs = await db_module.db.activity_logs.find(query).sort("timestamp", -1).skip(skip).limit(limit).to_list(length=limit)
+        
+        # Formatar para JSON
+        formatted = []
+        for log in logs:
+            formatted.append({
+                "email": log.get("email"),
+                "action": log.get("action"),
+                "details": log.get("details"),
+                "ip": log.get("ip"),
+                "userAgent": log.get("userAgent", "")[:50] + "..." if len(log.get("userAgent", "")) > 50 else log.get("userAgent", ""),
+                "timestamp": log.get("timestamp"),
+                "datetime": log.get("datetime").isoformat() if log.get("datetime") else None
+            })
+        
+        return {
+            "ok": True,
+            "data": formatted,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "totalPages": (total + limit - 1) // limit if limit > 0 else 1
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e), "data": [], "total": 0}
+

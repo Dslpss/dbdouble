@@ -263,9 +263,17 @@ async def save_signal_to_history(signal_data: Dict, result: str, attempts_used: 
         now = int(time.time() * 1000)
         created_at = signal_data.get('createdAt', now)
         
-        # Extrair hora e dia da semana
-        from datetime import datetime
-        dt = datetime.fromtimestamp(created_at / 1000)
+        # Extrair hora e dia da semana usando fuso horário de Brasília
+        from datetime import datetime, timezone, timedelta
+        try:
+            from zoneinfo import ZoneInfo
+            brazil_tz = ZoneInfo("America/Sao_Paulo")
+        except ImportError:
+            brazil_tz = timezone(timedelta(hours=-3))
+        
+        # Converter timestamp para datetime com fuso de Brasília
+        dt_utc = datetime.fromtimestamp(created_at / 1000, tz=timezone.utc)
+        dt_brazil = dt_utc.astimezone(brazil_tz)
         
         history_doc = {
             "id": signal_data.get('id', f"sig_{now}"),
@@ -277,16 +285,17 @@ async def save_signal_to_history(signal_data: Dict, result: str, attempts_used: 
             "resolvedAt": now,
             "result": result,  # 'win' ou 'loss'
             "attemptsUsed": attempts_used,
-            "hour": dt.hour,
-            "dayOfWeek": dt.weekday(),  # 0=Monday, 6=Sunday
-            "date": dt.strftime("%Y-%m-%d"),
+            "hour": dt_brazil.hour,  # Hora de Brasília
+            "dayOfWeek": dt_brazil.weekday(),  # 0=Monday, 6=Sunday
+            "date": dt_brazil.strftime("%Y-%m-%d"),  # Data de Brasília
             "confLabel": signal_data.get('confLabel', 'media')
         }
         
         await db_module.db.signal_history.insert_one(history_doc)
-        print(f"[Stats] Sinal salvo no histórico: {platform} {result} ({signal_data.get('patternKey')})")
+        print(f"[Stats] Sinal salvo no histórico: {platform} {result} ({signal_data.get('patternKey')}) - {dt_brazil.strftime('%H:%M')}")
     except Exception as e:
         print(f"Erro ao salvar sinal no histórico: {e}")
+
 
 
 async def load_stats_from_db():

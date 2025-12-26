@@ -167,6 +167,7 @@
       </div>
 
       <div class="users-table">
+        <h3 style="padding: 15px; margin: 0; color: var(--text-primary);">👥 Usuários</h3>
         <table id="usersTable">
           <thead>
             <tr>
@@ -183,10 +184,46 @@
           </thead>
           <tbody id="usersTableBody">
             <tr>
-              <td colspan="8" class="loading">Carregando usuários...</td>
+              <td colspan="9" class="loading">Carregando usuários...</td>
             </tr>
           </tbody>
         </table>
+      </div>
+      
+      <!-- Logs de Atividade -->
+      <div class="users-table" style="margin-top: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px;">
+          <h3 style="margin: 0; color: var(--text-primary);">📋 Logs de Atividade</h3>
+          <select id="logActionFilter" style="padding: 8px; border-radius: 6px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-color);">
+            <option value="">Todas as ações</option>
+            <option value="login">Login</option>
+            <option value="login_failed">Login Falhou</option>
+            <option value="logout">Logout</option>
+            <option value="page_access">Acesso</option>
+            <option value="admin_action">Ação Admin</option>
+          </select>
+        </div>
+        <table id="logsTable">
+          <thead>
+            <tr>
+              <th>Data/Hora</th>
+              <th>Email</th>
+              <th>Ação</th>
+              <th>Detalhes</th>
+              <th>IP</th>
+            </tr>
+          </thead>
+          <tbody id="logsTableBody">
+            <tr>
+              <td colspan="5" class="loading">Carregando logs...</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="display: flex; justify-content: center; gap: 10px; padding: 15px;">
+          <button id="logsPrevPage" class="btn-admin secondary">← Anterior</button>
+          <span id="logsPageInfo" style="padding: 10px; color: var(--text-secondary);">1 de 1</span>
+          <button id="logsNextPage" class="btn-admin secondary">Próxima →</button>
+        </div>
       </div>
     </div>
 
@@ -274,14 +311,24 @@
             <div class="admin-stat-label">Total de Usuários</div>
           </div>
           <div class="admin-stat-card">
-            <div class="admin-stat-value">R$ ${stats.total_bankroll.toFixed(
-              2
-            )}</div>
+            <div class="admin-stat-value">${stats.active_users_24h || 0}</div>
+            <div class="admin-stat-label">Ativos (24h)</div>
+          </div>
+          <div class="admin-stat-card">
+            <div class="admin-stat-value">R$ ${stats.total_bankroll.toFixed(2)}</div>
             <div class="admin-stat-label">Bankroll Total</div>
           </div>
           <div class="admin-stat-card">
-            <div class="admin-stat-value">${stats.database_name}</div>
-            <div class="admin-stat-label">Banco de Dados</div>
+            <div class="admin-stat-value">${stats.total_signals_30d || 0}</div>
+            <div class="admin-stat-label">Sinais (30 dias)</div>
+          </div>
+          <div class="admin-stat-card">
+            <div class="admin-stat-value" style="color: ${(stats.signal_rate_30d || 0) >= 50 ? 'var(--accent-green)' : '#ff6b6b'}">${stats.signal_rate_30d || 0}%</div>
+            <div class="admin-stat-label">Taxa de Acerto</div>
+          </div>
+          <div class="admin-stat-card">
+            <div class="admin-stat-value">${stats.total_logs || 0}</div>
+            <div class="admin-stat-label">Total de Logs</div>
           </div>
         `;
       }
@@ -291,7 +338,7 @@
 
         if (users.length === 0) {
           tbody.innerHTML =
-            '<tr><td colspan="8" style="text-align: center;">Nenhum usuário encontrado</td></tr>';
+            '<tr><td colspan="9" style="text-align: center;">Nenhum usuário encontrado</td></tr>';
           return;
         }
 
@@ -326,6 +373,64 @@
         `
           )
           .join("");
+      }
+
+      // Logs de Atividade
+      let logsPage = 1;
+      let logsTotalPages = 1;
+      
+      async function loadLogs() {
+        try {
+          const token = localStorage.getItem("token");
+          const actionFilter = document.getElementById("logActionFilter").value;
+          const url = `${API_BASE_URL}/api/auth/admin/logs?page=${logsPage}&limit=20${actionFilter ? '&action=' + actionFilter : ''}`;
+          
+          const response = await fetch(url, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          const data = await response.json();
+          if (data.ok) {
+            logsTotalPages = data.totalPages || 1;
+            displayLogs(data.data);
+            document.getElementById("logsPageInfo").textContent = `${logsPage} de ${logsTotalPages}`;
+            document.getElementById("logsPrevPage").disabled = logsPage <= 1;
+            document.getElementById("logsNextPage").disabled = logsPage >= logsTotalPages;
+          } else {
+            throw new Error(data.error || "Erro ao carregar logs");
+          }
+        } catch (error) {
+          console.error("Erro ao carregar logs:", error);
+          document.getElementById("logsTableBody").innerHTML = 
+            '<tr><td colspan="5" style="text-align: center;">Erro ao carregar logs</td></tr>';
+        }
+      }
+      
+      function displayLogs(logs) {
+        const tbody = document.getElementById("logsTableBody");
+        
+        if (logs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Nenhum log encontrado</td></tr>';
+          return;
+        }
+        
+        const actionColors = {
+          "login": "#00ff88",
+          "login_failed": "#ff6b6b",
+          "logout": "#ff9800",
+          "page_access": "#667eea",
+          "admin_action": "#9c27b0"
+        };
+        
+        tbody.innerHTML = logs.map(log => `
+          <tr>
+            <td>${log.datetime ? new Date(log.datetime).toLocaleString("pt-BR") : "-"}</td>
+            <td>${log.email || "-"}</td>
+            <td><span style="color: ${actionColors[log.action] || '#e0e4f0'}">${log.action}</span></td>
+            <td>${log.details || "-"}</td>
+            <td>${log.ip || "-"}</td>
+          </tr>
+        `).join("");
       }
 
       function showError(message) {
@@ -364,9 +469,34 @@
           showError("Erro de conexão ao resetar estado");
         }
       });
+      
+      // Logs pagination
+      document.getElementById("logsPrevPage").addEventListener("click", () => {
+        if (logsPage > 1) {
+          logsPage--;
+          loadLogs();
+        }
+      });
+      
+      document.getElementById("logsNextPage").addEventListener("click", () => {
+        if (logsPage < logsTotalPages) {
+          logsPage++;
+          loadLogs();
+        }
+      });
+      
+      document.getElementById("logActionFilter").addEventListener("change", () => {
+        logsPage = 1;
+        loadLogs();
+      });
 
       // Initialize
-      checkAdminAccess();
+      async function initAdmin() {
+        await checkAdminAccess();
+        loadLogs();
+      }
+      
+      initAdmin();
     </script>
   </body>
 </html>
