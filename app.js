@@ -277,6 +277,11 @@ async function initializeApp() {
     await fetchWinStreaks();
   } catch (e) {}
   
+  // Buscar dicas de padrões (melhor e pior)
+  try {
+    await loadPatternTips();
+  } catch (e) {}
+  
   connectSSE();
   updateStats();
   // Mostrar estado inicial de busca
@@ -899,6 +904,48 @@ async function fetchWinStreaks() {
 
 // Debug helpers: add counts manually from UI
 // Debug functions removed to avoid UI debug buttons in production
+
+// Função para carregar dicas de padrões (melhor e pior taxa de acerto)
+async function loadPatternTips() {
+  try {
+    const resp = await fetch(`${API_BASE_URL}/api/stats/pattern-tips?platform=playnabet&days=7&min_signals=3`);
+    const data = await resp.json();
+    
+    if (data && data.ok) {
+      // Melhor padrão
+      const bestNameEl = document.getElementById("bestPatternName");
+      const bestRateEl = document.getElementById("bestPatternRate");
+      const bestTotalEl = document.getElementById("bestPatternTotal");
+      
+      if (data.best) {
+        if (bestNameEl) bestNameEl.textContent = data.best.pattern;
+        if (bestRateEl) bestRateEl.textContent = data.best.rate;
+        if (bestTotalEl) bestTotalEl.textContent = data.best.total;
+      } else {
+        if (bestNameEl) bestNameEl.textContent = "Aguardando dados";
+        if (bestRateEl) bestRateEl.textContent = "-";
+        if (bestTotalEl) bestTotalEl.textContent = "-";
+      }
+      
+      // Pior padrão
+      const worstNameEl = document.getElementById("worstPatternName");
+      const worstRateEl = document.getElementById("worstPatternRate");
+      const worstTotalEl = document.getElementById("worstPatternTotal");
+      
+      if (data.worst) {
+        if (worstNameEl) worstNameEl.textContent = data.worst.pattern;
+        if (worstRateEl) worstRateEl.textContent = data.worst.rate;
+        if (worstTotalEl) worstTotalEl.textContent = data.worst.total;
+      } else {
+        if (worstNameEl) worstNameEl.textContent = "Aguardando dados";
+        if (worstRateEl) worstRateEl.textContent = "-";
+        if (worstTotalEl) worstTotalEl.textContent = "-";
+      }
+    }
+  } catch (e) {
+    console.error("Erro ao carregar dicas de padrões:", e);
+  }
+}
 
 // Atualiza contadores de wins e losses e o DOM, evitando duplicidade por signal id
 function updateWinLossCounts(outcome, signalId, resolvedAt = null) {

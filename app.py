@@ -639,6 +639,79 @@ async def api_stats_by_pattern(platform: str = "all", days: int = 30):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+@app.get("/api/stats/pattern-tips")
+async def api_stats_pattern_tips(platform: str = "all", days: int = 7, min_signals: int = 5):
+    """Retorna dicas de padrões: o melhor e o pior (com mínimo de sinais)"""
+    try:
+        if db_module.db is None:
+            return {"ok": False, "error": "Database not connected"}
+        
+        from datetime import datetime, timedelta
+        cutoff = datetime.now() - timedelta(days=days)
+        cutoff_ts = int(cutoff.timestamp() * 1000)
+        
+        query = {"createdAt": {"$gte": cutoff_ts}}
+        if platform != "all":
+            query["platform"] = platform
+        
+        signals = await db_module.db.signal_history.find(query).to_list(length=10000)
+        
+        # Agrupar por padrão
+        by_pattern = {}
+        for s in signals:
+            pattern = s.get("patternKey", "unknown")
+            if pattern not in by_pattern:
+                by_pattern[pattern] = {"total": 0, "wins": 0}
+            by_pattern[pattern]["total"] += 1
+            if s.get("result") == "win":
+                by_pattern[pattern]["wins"] += 1
+        
+        # Calcular taxas (apenas padrões com mínimo de sinais)
+        patterns_with_rate = []
+        for pattern, data in by_pattern.items():
+            if data["total"] >= min_signals:
+                rate = round((data["wins"] / data["total"] * 100), 2)
+                patterns_with_rate.append({
+                    "pattern": pattern,
+                    "total": data["total"],
+                    "wins": data["wins"],
+                    "rate": rate
+                })
+        
+        if not patterns_with_rate:
+            return {
+                "ok": True,
+                "best": None,
+                "worst": None,
+                "message": f"Poucos dados (mínimo {min_signals} sinais por padrão)"
+            }
+        
+        # Ordenar por taxa
+        patterns_with_rate.sort(key=lambda x: x["rate"], reverse=True)
+        
+        best = patterns_with_rate[0]
+        worst = patterns_with_rate[-1]
+        
+        return {
+            "ok": True,
+            "best": {
+                "pattern": best["pattern"],
+                "rate": best["rate"],
+                "total": best["total"],
+                "wins": best["wins"]
+            },
+            "worst": {
+                "pattern": worst["pattern"],
+                "rate": worst["rate"],
+                "total": worst["total"],
+                "wins": worst["wins"]
+            },
+            "days": days,
+            "platform": platform
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 @app.get("/api/stats/by-day")
 async def api_stats_by_day(platform: str = "all", days: int = 30):
     """Retorna taxa de acerto por dia (para gráfico de linha)"""

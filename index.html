@@ -103,6 +103,26 @@
           </div>
         </div>
       </section>
+      
+      <!-- Dicas de Padrões -->
+      <section class="pattern-tips-section" style="margin-bottom: 20px;">
+        <div style="display: flex; gap: 16px; flex-wrap: wrap; justify-content: center;">
+          <div id="bestPatternCard" class="stat-card" style="flex: 1; min-width: 200px; max-width: 300px; border: 2px solid #00ff88; background: linear-gradient(145deg, rgba(0,255,136,0.1), transparent);">
+            <div class="stat-label" style="color: #00ff88;">🔥 Melhor Padrão (7 dias)</div>
+            <div class="stat-value" id="bestPatternName" style="font-size: 1.1rem; color: #00ff88;">-</div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary);">
+              Taxa: <span id="bestPatternRate">-</span>% | <span id="bestPatternTotal">-</span> sinais
+            </div>
+          </div>
+          <div id="worstPatternCard" class="stat-card" style="flex: 1; min-width: 200px; max-width: 300px; border: 2px solid #ff4444; background: linear-gradient(145deg, rgba(255,68,68,0.1), transparent);">
+            <div class="stat-label" style="color: #ff4444;">⚠️ Evitar (7 dias)</div>
+            <div class="stat-value" id="worstPatternName" style="font-size: 1.1rem; color: #ff4444;">-</div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary);">
+              Taxa: <span id="worstPatternRate">-</span>% | <span id="worstPatternTotal">-</span> sinais
+            </div>
+          </div>
+        </div>
+      </section>
 
       <!-- Game iframe (embed) -->
       <section class="game-section">
