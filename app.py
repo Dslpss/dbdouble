@@ -943,17 +943,18 @@ async def admin_reset_state(admin_user: dict = Depends(get_admin_user)):
         verabet_last_win_ts = None
         verabet_last_loss_ts = None
         
-        # Limpar coleção de stats no MongoDB
+        # Limpar coleção de stats e signal_history no MongoDB
         try:
             if db_module.db is not None:
                 await db_module.db.stats.delete_many({})
+                await db_module.db.signal_history.delete_many({})  # Limpar histórico de sinais
                 try:
                     await db_module.db.stats.delete_one({"_id": "verabet_stats"})
                 except Exception:
                     pass
-                print("✅ Coleção de stats limpa no MongoDB")
+                print("✅ Coleções de stats e signal_history limpas no MongoDB")
         except Exception as e:
-            print(f"Erro ao limpar stats no DB: {e}")
+            print(f"Erro ao limpar dados no DB: {e}")
             
         try:
             base = os.path.dirname(os.path.abspath(__file__))
