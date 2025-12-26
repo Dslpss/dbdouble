@@ -46,7 +46,8 @@ let historico_alertas = [];
 // Stats tracking
 let currentWinStreak = 0;
 let maxWinStreak = 0;
-let consecutiveLosses = 0;
+let consecutiveLossesCount = 0;
+let lastConsecutiveLossTime = null;
 
 function decrementar_cooldown() {
   if (modo_stop) {
@@ -84,30 +85,31 @@ function registrar_resultado(acertou) {
     perdas_consecutivas = 0;
     modo_conservador = false;
     currentWinStreak++;
-    consecutiveLosses = 0;
     if (currentWinStreak > maxWinStreak) {
       maxWinStreak = currentWinStreak;
     }
   } else {
     perdas_consecutivas++;
-    consecutiveLosses++;
     currentWinStreak = 0;
     ativar_cooldown("perda");
     if (perdas_consecutivas >= 3) {
       ativar_cooldown("stop");
     }
   }
-  updateWinStreakUI();
+  // Buscar dados atualizados do backend (inclui contagem correta de sequências)
+  fetchUpdatedStats();
 }
 
 function updateWinStreakUI() {
   try {
     const currentEl = document.getElementById("currentWinStreak");
     const maxEl = document.getElementById("maxWinStreak");
-    const lossEl = document.getElementById("consecutiveLosses");
+    const lossCountEl = document.getElementById("consecutiveLosses");
+    const lossTimeEl = document.getElementById("lastConsecutiveLossTime");
     if (currentEl) currentEl.textContent = String(currentWinStreak);
     if (maxEl) maxEl.textContent = String(maxWinStreak);
-    if (lossEl) lossEl.textContent = String(consecutiveLosses);
+    if (lossCountEl) lossCountEl.textContent = String(consecutiveLossesCount);
+    if (lossTimeEl) lossTimeEl.textContent = lastConsecutiveLossTime ? formatTimestamp(lastConsecutiveLossTime) : "-";
   } catch (e) {}
 }
 
@@ -189,7 +191,8 @@ async function initializeApp() {
     if (wdata && wdata.ok) {
       currentWinStreak = wdata.currentStreak || 0;
       maxWinStreak = wdata.maxStreak || 0;
-      consecutiveLosses = wdata.consecutiveLosses || 0;
+      consecutiveLossesCount = wdata.consecutiveLossesCount || 0;
+      lastConsecutiveLossTime = wdata.lastConsecutiveLossTime || null;
       updateWinStreakUI();
       
       const avgEl = document.getElementById("avgWinsBetweenLosses");
@@ -459,7 +462,8 @@ async function fetchUpdatedStats() {
     if (wdata && wdata.ok) {
       currentWinStreak = wdata.currentStreak || 0;
       maxWinStreak = wdata.maxStreak || 0;
-      consecutiveLosses = wdata.consecutiveLosses || 0;
+      consecutiveLossesCount = wdata.consecutiveLossesCount || 0;
+      lastConsecutiveLossTime = wdata.lastConsecutiveLossTime || null;
       updateWinStreakUI();
       
       const avgEl = document.getElementById("avgWinsBetweenLosses");

@@ -1252,14 +1252,39 @@ def verabet_registrar_resultado_sinal(confianca: str, acertou: bool):
         pass
 
 def verabet_get_consecutive_losses():
-    """Conta quantos losses consecutivos existem no histórico (do mais recente para trás)"""
+    """
+    Conta quantas VEZES aconteceu uma sequência de 2+ losses consecutivos.
+    Retorna (contagem, timestamp_ultima_sequencia)
+    """
     count = 0
-    for entry in reversed(verabet_signal_outcome_history):
+    last_sequence_ts = None
+    in_loss_streak = False
+    current_streak = 0
+    streak_start_ts = None
+    
+    for entry in verabet_signal_outcome_history:
         if entry.get("outcome") == "loss":
-            count += 1
+            if not in_loss_streak:
+                # Primeiro loss da possível sequência
+                in_loss_streak = True
+                current_streak = 1
+                streak_start_ts = entry.get("ts")
+            else:
+                current_streak += 1
         else:
-            break  # Parou de ser loss consecutivo
-    return count
+            if in_loss_streak and current_streak >= 2:
+                count += 1  # Terminou uma sequência válida de 2+ losses
+                last_sequence_ts = streak_start_ts
+            in_loss_streak = False
+            current_streak = 0
+            streak_start_ts = None
+    
+    # Checar se terminou em sequência ainda ativa
+    if in_loss_streak and current_streak >= 2:
+        count += 1
+        last_sequence_ts = streak_start_ts
+    
+    return count, last_sequence_ts
 
 # VeraBet Routes
 @app.get("/verabet", response_class=HTMLResponse)
@@ -1324,14 +1349,15 @@ async def verabet_api_win_streaks():
         avg_wins = 0.0
         if len(verabet_win_streak_history) > 0:
             avg_wins = sum(verabet_win_streak_history) / len(verabet_win_streak_history)
-        # Calcular losses consecutivos do histórico de outcomes
-        consecutive_losses = verabet_get_consecutive_losses()
+        # Calcular sequências de losses consecutivos (2+ seguidos)
+        loss_sequences_count, last_sequence_ts = verabet_get_consecutive_losses()
         
         return {
             "ok": True,
             "currentStreak": verabet_current_win_streak,
             "maxStreak": verabet_max_win_streak,
-            "consecutiveLosses": consecutive_losses,
+            "consecutiveLossesCount": loss_sequences_count,
+            "lastConsecutiveLossTime": last_sequence_ts,
             "averageWinsBetweenLosses": round(avg_wins, 2),
             "streakHistory": verabet_win_streak_history[-10:] if len(verabet_win_streak_history) > 0 else [],
             "totalStreaks": len(verabet_win_streak_history)

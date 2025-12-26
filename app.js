@@ -830,21 +830,42 @@ function addSignalOutcome(outcome) {
 }
 
 function getConsecutiveSignalLosses() {
-  // Conta quantas vezes um LOSS foi diretamente seguido por outro LOSS
-  // LOSS → LOSS = +1
-  // LOSS → WIN = não conta
+  // Conta quantas VEZES aconteceu uma sequência de 2+ losses consecutivos
+  // Retorna { count, lastSequenceTs }
   let count = 0;
+  let lastSequenceTs = null;
+  let inLossStreak = false;
+  let currentStreak = 0;
+  let streakStartTs = null;
   
-  // Percorrer do mais antigo para o mais recente (do final para o início do array)
-  for (let i = signalOutcomeHistory.length - 1; i > 0; i--) {
-    // Verifica se o atual é LOSS e o próximo (mais recente) também é LOSS
-    if (signalOutcomeHistory[i].outcome === "loss" && 
-        signalOutcomeHistory[i - 1].outcome === "loss") {
-      count++;
+  for (const entry of signalOutcomeHistory) {
+    if (entry.outcome === "loss") {
+      if (!inLossStreak) {
+        // Primeiro loss da possível sequência
+        inLossStreak = true;
+        currentStreak = 1;
+        streakStartTs = entry.ts;
+      } else {
+        currentStreak++;
+      }
+    } else {
+      if (inLossStreak && currentStreak >= 2) {
+        count++; // Terminou uma sequência válida de 2+ losses
+        lastSequenceTs = streakStartTs;
+      }
+      inLossStreak = false;
+      currentStreak = 0;
+      streakStartTs = null;
     }
   }
   
-  return count;
+  // Checar se terminou em sequência ainda ativa
+  if (inLossStreak && currentStreak >= 2) {
+    count++;
+    lastSequenceTs = streakStartTs;
+  }
+  
+  return { count, lastSequenceTs };
 }
 
 // Fetch and update win streak statistics
@@ -971,9 +992,13 @@ function updateWinLossCounts(outcome, signalId, resolvedAt = null) {
   // Atualizar perdas consecutivas
   try {
     const consecutiveLossesEl = document.getElementById("consecutiveLosses");
+    const lastConsecutiveLossTimeEl = document.getElementById("lastConsecutiveLossTime");
     if (consecutiveLossesEl) {
-      const lossCount = getConsecutiveSignalLosses();
-      consecutiveLossesEl.textContent = String(lossCount);
+      const { count, lastSequenceTs } = getConsecutiveSignalLosses();
+      consecutiveLossesEl.textContent = String(count);
+      if (lastConsecutiveLossTimeEl) {
+        lastConsecutiveLossTimeEl.textContent = lastSequenceTs ? formatTimestamp(lastSequenceTs) : "-";
+      }
     }
   } catch (e) {}
 
