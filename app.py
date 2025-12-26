@@ -251,6 +251,44 @@ async def save_stats_to_db():
     except Exception as e:
         print(f"Erro ao salvar stats no DB: {e}")
 
+async def save_signal_to_history(signal_data: Dict, result: str, attempts_used: int, platform: str = "playnabet"):
+    """
+    Salva um sinal no histórico para análise estatística detalhada.
+    Usado para gerar gráficos de performance por hora, dia, padrão, etc.
+    """
+    try:
+        if db_module.db is None:
+            return
+        
+        now = int(time.time() * 1000)
+        created_at = signal_data.get('createdAt', now)
+        
+        # Extrair hora e dia da semana
+        from datetime import datetime
+        dt = datetime.fromtimestamp(created_at / 1000)
+        
+        history_doc = {
+            "id": signal_data.get('id', f"sig_{now}"),
+            "platform": platform,
+            "patternKey": signal_data.get('patternKey', 'unknown'),
+            "color": signal_data.get('color'),
+            "chance": signal_data.get('chance', 0),
+            "createdAt": created_at,
+            "resolvedAt": now,
+            "result": result,  # 'win' ou 'loss'
+            "attemptsUsed": attempts_used,
+            "hour": dt.hour,
+            "dayOfWeek": dt.weekday(),  # 0=Monday, 6=Sunday
+            "date": dt.strftime("%Y-%m-%d"),
+            "confLabel": signal_data.get('confLabel', 'media')
+        }
+        
+        await db_module.db.signal_history.insert_one(history_doc)
+        print(f"[Stats] Sinal salvo no histórico: {platform} {result} ({signal_data.get('patternKey')})")
+    except Exception as e:
+        print(f"Erro ao salvar sinal no histórico: {e}")
+
+
 async def load_stats_from_db():
     """Carrega estatísticas do MongoDB na inicialização"""
     global signal_stats, last_win_ts, last_loss_ts, current_win_streak, max_win_streak, win_streak_history, signal_outcome_history, results_history
@@ -381,6 +419,27 @@ async def app_js():
         return FileResponse(js_path, media_type="application/javascript")
     return {"error": "File not found"}, 404
 
+@app.get("/stats", response_class=HTMLResponse)
+async def stats_page(request: Request):
+    """Página de estatísticas - requer autenticação"""
+    try:
+        await get_current_user(request)
+    except Exception:
+        return HTMLResponse(content="", status_code=302, headers={"Location": "/auth"})
+    
+    html_path = os.path.join(base_dir, "stats.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse("<h1>Stats page not found</h1>", status_code=404)
+
+@app.get("/stats.js")
+async def stats_js():
+    js_path = os.path.join(base_dir, "stats.js")
+    if os.path.exists(js_path):
+        return FileResponse(js_path, media_type="application/javascript")
+    return {"error": "File not found"}, 404
+
 @app.get("/api/status")
 async def status():
     """Status da conexão WebSocket"""
@@ -435,6 +494,230 @@ async def api_win_streaks():
             "averageWinsBetweenLosses": round(avg_wins, 2),
             "streakHistory": win_streak_history[-10:] if len(win_streak_history) > 0 else [],
             "totalStreaks": len(win_streak_history)
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+# ============================================================
+# ENDPOINTS DE ESTATÍSTICAS AVANÇADAS
+# ============================================================
+
+@app.get("/api/stats/overview")
+async def api_stats_overview(platform: str = "all", days: int = 30):
+    """Retorna estatísticas gerais para o dashboard"""
+    try:
+        if db_module.db is None:
+            return {"ok": False, "error": "Database not connected"}
+        
+        # Filtrar por período
+        from datetime import datetime, timedelta
+        cutoff = datetime.now() - timedelta(days=days)
+        cutoff_ts = int(cutoff.timestamp() * 1000)
+        
+        query = {"createdAt": {"$gte": cutoff_ts}}
+        if platform != "all":
+            query["platform"] = platform
+        
+        signals = await db_module.db.signal_history.find(query).to_list(length=10000)
+        
+        total = len(signals)
+        wins = sum(1 for s in signals if s.get("result") == "win")
+        losses = total - wins
+        rate = round((wins / total * 100), 2) if total > 0 else 0
+        
+        # ROI simulado (aposta R$10, retorno 2x no win)
+        # ROI = ((wins * 20) - (total * 10)) / (total * 10) * 100
+        roi = round(((wins * 20) - (total * 10)) / (total * 10) * 100, 2) if total > 0 else 0
+        
+        return {
+            "ok": True,
+            "total": total,
+            "wins": wins,
+            "losses": losses,
+            "rate": rate,
+            "roi": roi,
+            "platform": platform,
+            "days": days
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.get("/api/stats/by-hour")
+async def api_stats_by_hour(platform: str = "all", days: int = 30):
+    """Retorna taxa de acerto por hora do dia"""
+    try:
+        if db_module.db is None:
+            return {"ok": False, "error": "Database not connected"}
+        
+        from datetime import datetime, timedelta
+        cutoff = datetime.now() - timedelta(days=days)
+        cutoff_ts = int(cutoff.timestamp() * 1000)
+        
+        query = {"createdAt": {"$gte": cutoff_ts}}
+        if platform != "all":
+            query["platform"] = platform
+        
+        signals = await db_module.db.signal_history.find(query).to_list(length=10000)
+        
+        # Agrupar por hora
+        by_hour = {}
+        for h in range(24):
+            by_hour[h] = {"total": 0, "wins": 0}
+        
+        for s in signals:
+            hour = s.get("hour", 0)
+            by_hour[hour]["total"] += 1
+            if s.get("result") == "win":
+                by_hour[hour]["wins"] += 1
+        
+        # Calcular taxas
+        result = []
+        for hour in range(24):
+            data = by_hour[hour]
+            rate = round((data["wins"] / data["total"] * 100), 2) if data["total"] > 0 else 0
+            result.append({
+                "hour": hour,
+                "total": data["total"],
+                "wins": data["wins"],
+                "rate": rate
+            })
+        
+        return {"ok": True, "data": result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.get("/api/stats/by-pattern")
+async def api_stats_by_pattern(platform: str = "all", days: int = 30):
+    """Retorna taxa de acerto por padrão detectado"""
+    try:
+        if db_module.db is None:
+            return {"ok": False, "error": "Database not connected"}
+        
+        from datetime import datetime, timedelta
+        cutoff = datetime.now() - timedelta(days=days)
+        cutoff_ts = int(cutoff.timestamp() * 1000)
+        
+        query = {"createdAt": {"$gte": cutoff_ts}}
+        if platform != "all":
+            query["platform"] = platform
+        
+        signals = await db_module.db.signal_history.find(query).to_list(length=10000)
+        
+        # Agrupar por padrão
+        by_pattern = {}
+        for s in signals:
+            pattern = s.get("patternKey", "unknown")
+            if pattern not in by_pattern:
+                by_pattern[pattern] = {"total": 0, "wins": 0}
+            by_pattern[pattern]["total"] += 1
+            if s.get("result") == "win":
+                by_pattern[pattern]["wins"] += 1
+        
+        # Calcular taxas e ordenar por total
+        result = []
+        for pattern, data in by_pattern.items():
+            rate = round((data["wins"] / data["total"] * 100), 2) if data["total"] > 0 else 0
+            result.append({
+                "pattern": pattern,
+                "total": data["total"],
+                "wins": data["wins"],
+                "rate": rate
+            })
+        
+        result.sort(key=lambda x: x["total"], reverse=True)
+        
+        return {"ok": True, "data": result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.get("/api/stats/by-day")
+async def api_stats_by_day(platform: str = "all", days: int = 30):
+    """Retorna taxa de acerto por dia (para gráfico de linha)"""
+    try:
+        if db_module.db is None:
+            return {"ok": False, "error": "Database not connected"}
+        
+        from datetime import datetime, timedelta
+        cutoff = datetime.now() - timedelta(days=days)
+        cutoff_ts = int(cutoff.timestamp() * 1000)
+        
+        query = {"createdAt": {"$gte": cutoff_ts}}
+        if platform != "all":
+            query["platform"] = platform
+        
+        signals = await db_module.db.signal_history.find(query).to_list(length=10000)
+        
+        # Agrupar por data
+        by_date = {}
+        for s in signals:
+            date = s.get("date", "unknown")
+            if date not in by_date:
+                by_date[date] = {"total": 0, "wins": 0}
+            by_date[date]["total"] += 1
+            if s.get("result") == "win":
+                by_date[date]["wins"] += 1
+        
+        # Calcular taxas e ordenar por data
+        result = []
+        for date, data in by_date.items():
+            rate = round((data["wins"] / data["total"] * 100), 2) if data["total"] > 0 else 0
+            result.append({
+                "date": date,
+                "total": data["total"],
+                "wins": data["wins"],
+                "rate": rate
+            })
+        
+        result.sort(key=lambda x: x["date"])
+        
+        return {"ok": True, "data": result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.get("/api/stats/signals-history")
+async def api_stats_signals_history(platform: str = "all", days: int = 30, page: int = 1, limit: int = 50):
+    """Retorna histórico de sinais com paginação"""
+    try:
+        if db_module.db is None:
+            return {"ok": False, "error": "Database not connected"}
+        
+        from datetime import datetime, timedelta
+        cutoff = datetime.now() - timedelta(days=days)
+        cutoff_ts = int(cutoff.timestamp() * 1000)
+        
+        query = {"createdAt": {"$gte": cutoff_ts}}
+        if platform != "all":
+            query["platform"] = platform
+        
+        # Contar total
+        total = await db_module.db.signal_history.count_documents(query)
+        
+        # Buscar com paginação
+        skip = (page - 1) * limit
+        signals = await db_module.db.signal_history.find(query).sort("createdAt", -1).skip(skip).limit(limit).to_list(length=limit)
+        
+        # Formatar para JSON (remover _id do MongoDB)
+        formatted = []
+        for s in signals:
+            formatted.append({
+                "id": s.get("id"),
+                "platform": s.get("platform"),
+                "patternKey": s.get("patternKey"),
+                "color": s.get("color"),
+                "result": s.get("result"),
+                "attemptsUsed": s.get("attemptsUsed"),
+                "createdAt": s.get("createdAt"),
+                "hour": s.get("hour"),
+                "date": s.get("date")
+            })
+        
+        return {
+            "ok": True,
+            "data": formatted,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "totalPages": (total + limit - 1) // limit
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -755,6 +1038,11 @@ def on_message(data: Dict):
                             except:
                                 pass
                         remove_ids.append(pb.get('id'))
+                        # Salvar no histórico para estatísticas
+                        try:
+                            asyncio.create_task(save_signal_to_history(pb, 'win', pb['attemptsUsed'], 'playnabet'))
+                        except Exception:
+                            pass
                     else:
                         # decrement attempts
                         pb['attemptsLeft'] = attempts_left - 1
@@ -788,6 +1076,11 @@ def on_message(data: Dict):
                                 except:
                                     pass
                             remove_ids.append(pb.get('id'))
+                            # Salvar no histórico para estatísticas
+                            try:
+                                asyncio.create_task(save_signal_to_history(pb, 'loss', pb['attemptsUsed'], 'playnabet'))
+                            except Exception:
+                                pass
                 # Limpar pendentes resolvidos
                 if remove_ids:
                     pending_bets[:] = [p for p in pending_bets if p.get('id') not in remove_ids]
@@ -1109,6 +1402,11 @@ def verabet_on_message(data: Dict):
                         remove_ids.append(pb.get('id'))
                         signal_just_resolved = True
                         print(f"[VeraBet] ✅ WIN detectado para {pb.get('patternKey')} após {pb['attemptsUsed']} tentativa(s)")
+                        # Salvar no histórico para estatísticas
+                        try:
+                            asyncio.create_task(save_signal_to_history(pb, 'win', pb['attemptsUsed'], 'verabet'))
+                        except Exception:
+                            pass
                     else:
                         pb['attemptsLeft'] = attempts_left - 1
                         pb['attemptsUsed'] = pb.get('attemptsUsed', 0) + 1
@@ -1128,6 +1426,11 @@ def verabet_on_message(data: Dict):
                             remove_ids.append(pb.get('id'))
                             signal_just_resolved = True
                             print(f"[VeraBet] ❌ LOSS detectado para {pb.get('patternKey')} após 3 tentativas")
+                            # Salvar no histórico para estatísticas
+                            try:
+                                asyncio.create_task(save_signal_to_history(pb, 'loss', pb['attemptsUsed'], 'verabet'))
+                            except Exception:
+                                pass
                 
                 if remove_ids:
                     verabet_pending_bets[:] = [p for p in verabet_pending_bets if p.get('id') not in remove_ids]

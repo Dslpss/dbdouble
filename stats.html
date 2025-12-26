@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DBcolor - Estatísticas</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      .stats-container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      
+      .stats-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        gap: 16px;
+      }
+      
+      .stats-header h1 {
+        margin: 0;
+        font-size: 1.8rem;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      
+      .stats-filters {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      
+      .stats-filters select {
+        padding: 10px 16px;
+        border-radius: 8px;
+        border: 1px solid #3a3f5c;
+        background: #1a1d2e;
+        color: #e0e4f0;
+        font-size: 0.9rem;
+        cursor: pointer;
+      }
+      
+      .overview-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+      
+      .overview-card {
+        background: linear-gradient(145deg, #1e2235, #252a40);
+        border-radius: 12px;
+        padding: 20px;
+        border: 1px solid #3a3f5c;
+      }
+      
+      .overview-card.win {
+        border-color: #00ff88;
+        box-shadow: 0 0 20px rgba(0, 255, 136, 0.1);
+      }
+      
+      .overview-card.loss {
+        border-color: #ff4444;
+        box-shadow: 0 0 20px rgba(255, 68, 68, 0.1);
+      }
+      
+      .overview-card.rate {
+        border-color: #667eea;
+        box-shadow: 0 0 20px rgba(102, 126, 234, 0.1);
+      }
+      
+      .overview-card.roi {
+        border-color: #ffd700;
+        box-shadow: 0 0 20px rgba(255, 215, 0, 0.1);
+      }
+      
+      .overview-label {
+        font-size: 0.85rem;
+        color: #8a8fa8;
+        margin-bottom: 8px;
+      }
+      
+      .overview-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #e0e4f0;
+      }
+      
+      .overview-card.win .overview-value { color: #00ff88; }
+      .overview-card.loss .overview-value { color: #ff4444; }
+      .overview-card.rate .overview-value { color: #667eea; }
+      .overview-card.roi .overview-value { color: #ffd700; }
+      
+      .charts-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        gap: 24px;
+        margin-bottom: 24px;
+      }
+      
+      .chart-card {
+        background: linear-gradient(145deg, #1e2235, #252a40);
+        border-radius: 12px;
+        padding: 20px;
+        border: 1px solid #3a3f5c;
+      }
+      
+      .chart-card h3 {
+        margin: 0 0 16px 0;
+        font-size: 1.1rem;
+        color: #c0c8e0;
+      }
+      
+      .chart-container {
+        position: relative;
+        height: 300px;
+      }
+      
+      .history-section {
+        background: linear-gradient(145deg, #1e2235, #252a40);
+        border-radius: 12px;
+        padding: 20px;
+        border: 1px solid #3a3f5c;
+      }
+      
+      .history-section h3 {
+        margin: 0 0 16px 0;
+        font-size: 1.1rem;
+        color: #c0c8e0;
+      }
+      
+      .history-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+      }
+      
+      .history-table th,
+      .history-table td {
+        padding: 12px 8px;
+        text-align: left;
+        border-bottom: 1px solid #3a3f5c;
+      }
+      
+      .history-table th {
+        color: #8a8fa8;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+      }
+      
+      .history-table td {
+        color: #e0e4f0;
+      }
+      
+      .result-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 0.8rem;
+      }
+      
+      .result-badge.win {
+        background: rgba(0, 255, 136, 0.2);
+        color: #00ff88;
+      }
+      
+      .result-badge.loss {
+        background: rgba(255, 68, 68, 0.2);
+        color: #ff4444;
+      }
+      
+      .color-badge {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+      }
+      
+      .color-badge.red { background: #e74c3c; }
+      .color-badge.black { background: #2c3e50; border: 1px solid #555; }
+      .color-badge.white { background: #ecf0f1; }
+      
+      .pagination {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 16px;
+      }
+      
+      .pagination button {
+        padding: 8px 16px;
+        border-radius: 6px;
+        border: 1px solid #3a3f5c;
+        background: #1a1d2e;
+        color: #e0e4f0;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      
+      .pagination button:hover:not(:disabled) {
+        background: #667eea;
+        border-color: #667eea;
+      }
+      
+      .pagination button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      
+      .pagination span {
+        padding: 8px 16px;
+        color: #8a8fa8;
+      }
+      
+      .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 20px;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+        border-radius: 8px;
+        text-decoration: none;
+        font-weight: 600;
+        transition: transform 0.2s;
+      }
+      
+      .back-link:hover {
+        transform: translateY(-2px);
+      }
+      
+      .loading {
+        text-align: center;
+        padding: 40px;
+        color: #8a8fa8;
+      }
+      
+      .no-data {
+        text-align: center;
+        padding: 40px;
+        color: #8a8fa8;
+        font-style: italic;
+      }
+      
+      @media (max-width: 768px) {
+        .charts-grid {
+          grid-template-columns: 1fr;
+        }
+        
+        .chart-container {
+          height: 250px;
+        }
+        
+        .history-table {
+          font-size: 0.8rem;
+        }
+        
+        .history-table th,
+        .history-table td {
+          padding: 8px 4px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stats-container">
+      <div class="stats-header">
+        <h1>📊 Dashboard de Estatísticas</h1>
+        <div class="stats-filters">
+          <select id="platformFilter">
+            <option value="all">Todas as plataformas</option>
+            <option value="playnabet">PlayNaBet</option>
+            <option value="verabet">VeraBet</option>
+          </select>
+          <select id="periodFilter">
+            <option value="7">Últimos 7 dias</option>
+            <option value="30" selected>Últimos 30 dias</option>
+            <option value="90">Últimos 90 dias</option>
+            <option value="365">Último ano</option>
+          </select>
+          <a href="/" class="back-link">← Voltar</a>
+        </div>
+      </div>
+      
+      <!-- Overview Cards -->
+      <div class="overview-cards">
+        <div class="overview-card">
+          <div class="overview-label">Total de Sinais</div>
+          <div class="overview-value" id="totalSignals">-</div>
+        </div>
+        <div class="overview-card win">
+          <div class="overview-label">Wins</div>
+          <div class="overview-value" id="totalWins">-</div>
+        </div>
+        <div class="overview-card loss">
+          <div class="overview-label">Losses</div>
+          <div class="overview-value" id="totalLosses">-</div>
+        </div>
+        <div class="overview-card rate">
+          <div class="overview-label">Taxa de Acerto</div>
+          <div class="overview-value" id="winRate">-</div>
+        </div>
+        <div class="overview-card roi">
+          <div class="overview-label">ROI Simulado</div>
+          <div class="overview-value" id="roiValue">-</div>
+        </div>
+      </div>
+      
+      <!-- Charts -->
+      <div class="charts-grid">
+        <div class="chart-card">
+          <h3>📈 Performance por Dia</h3>
+          <div class="chart-container">
+            <canvas id="chartByDay"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h3>🕐 Taxa por Hora do Dia</h3>
+          <div class="chart-container">
+            <canvas id="chartByHour"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h3>🎯 Taxa por Padrão</h3>
+          <div class="chart-container">
+            <canvas id="chartByPattern"></canvas>
+          </div>
+        </div>
+      </div>
+      
+      <!-- History Table -->
+      <div class="history-section">
+        <h3>📋 Histórico de Sinais</h3>
+        <div id="historyLoading" class="loading">Carregando...</div>
+        <table class="history-table" id="historyTable" style="display: none;">
+          <thead>
+            <tr>
+              <th>Data/Hora</th>
+              <th>Plataforma</th>
+              <th>Padrão</th>
+              <th>Cor</th>
+              <th>Resultado</th>
+              <th>Tentativas</th>
+            </tr>
+          </thead>
+          <tbody id="historyBody">
+          </tbody>
+        </table>
+        <div class="pagination" id="pagination" style="display: none;">
+          <button id="prevPage">← Anterior</button>
+          <span id="pageInfo">1 de 1</span>
+          <button id="nextPage">Próxima →</button>
+        </div>
+      </div>
+    </div>
+    
+    <script src="stats.js"></script>
+  </body>
+</html>
