@@ -61,6 +61,8 @@ let suppressedSignalUiIds = new Set();
 let suppressedSignalIds = new Set();
 // Signatures de sinais suprimidos quando não há um id backend confiável
 let suppressedSignatures = []; // { color, round, ts, backendId? }
+// Configuração de tentativas do usuário (2 ou 3)
+let userMaxAttempts = 3;
 
 function registerSuppressedSignature(color, backendId = null) {
   try {
@@ -300,6 +302,75 @@ async function initializeApp() {
 
   // Mostrar informações do usuário se logado
   showUserInfo();
+  
+  // Carregar max_attempts do usuário
+  try {
+    const token = localStorage.getItem("token");
+    if (token) {
+      const meResp = await fetch(`${API_BASE_URL}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (meResp.ok) {
+        const meData = await meResp.json();
+        userMaxAttempts = meData.max_attempts || 3;
+        // Atualizar select se existir
+        const maxAttemptsSelect = document.getElementById("maxAttempts");
+        if (maxAttemptsSelect) maxAttemptsSelect.value = String(userMaxAttempts);
+      }
+    }
+  } catch (e) {}
+  
+  // Handler para formulário de configurações
+  try {
+    const settingsForm = document.getElementById("settingsForm");
+    if (settingsForm) {
+      settingsForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const token = localStorage.getItem("token");
+        if (!token) return;
+        
+        const enabledColors = [];
+        if (document.getElementById("colorRed")?.checked) enabledColors.push("red");
+        if (document.getElementById("colorBlack")?.checked) enabledColors.push("black");
+        if (document.getElementById("colorWhite")?.checked) enabledColors.push("white");
+        
+        const receiveAlerts = document.getElementById("receiveAlerts")?.checked ?? true;
+        const patternsInput = document.getElementById("enabledPatterns")?.value || "";
+        const enabledPatterns = patternsInput.split(",").map(p => p.trim()).filter(p => p);
+        const maxAttempts = parseInt(document.getElementById("maxAttempts")?.value) || 3;
+        
+        try {
+          const resp = await fetch(`${API_BASE_URL}/api/auth/preferences`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              enabled_colors: enabledColors,
+              enabled_patterns: enabledPatterns,
+              receive_alerts: receiveAlerts,
+              max_attempts: maxAttempts
+            }),
+          });
+          
+          if (resp.ok) {
+            const data = await resp.json();
+            userMaxAttempts = data.max_attempts || 3;
+            alert("Configurações salvas com sucesso!");
+            // Fechar modal
+            const settingsModal = document.getElementById("settingsModal");
+            if (settingsModal) settingsModal.style.display = "none";
+          } else {
+            alert("Erro ao salvar configurações");
+          }
+        } catch (err) {
+          console.error("Erro ao salvar preferências:", err);
+          alert("Erro ao salvar configurações");
+        }
+      });
+    }
+  } catch (e) {}
 
   // Wire logout button
   try {
@@ -310,6 +381,32 @@ async function initializeApp() {
         logout();
       });
     }
+  } catch (e) {}
+  
+  // Wire settings button
+  try {
+    const btnSettings = document.getElementById("btnSettings");
+    const settingsModal = document.getElementById("settingsModal");
+    const closeSettings = document.getElementById("closeSettings");
+    
+    if (btnSettings && settingsModal) {
+      btnSettings.addEventListener("click", () => {
+        settingsModal.style.display = "block";
+      });
+    }
+    
+    if (closeSettings && settingsModal) {
+      closeSettings.addEventListener("click", () => {
+        settingsModal.style.display = "none";
+      });
+    }
+    
+    // Fechar ao clicar fora
+    window.addEventListener("click", (e) => {
+      if (e.target === settingsModal) {
+        settingsModal.style.display = "none";
+      }
+    });
   } catch (e) {}
 
   try {
@@ -674,8 +771,8 @@ function evaluatePendingSignals(newResult) {
       setTimeout(() => {
         signalJustResolved = false;
       }, 5000);
-    } else if (p.evaluatedRounds >= p.maxAttempts) {
-      // Loss
+    } else if (p.evaluatedRounds >= userMaxAttempts) {
+      // Loss - usa a configuração do usuário (2 ou 3 tentativas)
       p.resolved = true;
       updateHistoryWithOutcome(
         p.id,
@@ -753,6 +850,31 @@ function updateHistoryWithOutcome(
   try {
     if (typeof updateMartingaleUI === "function") updateMartingaleUI();
   } catch (e) {}
+  
+  // Enviar resultado ao backend para salvar no histórico de estatísticas
+  try {
+    // Encontrar o sinal pendente para pegar dados adicionais
+    const pendingSignal = pendingSignals.find(p => p.id === signalUiId);
+    const signalData = {
+      id: signalUiId,
+      result: outcome,
+      attemptsUsed: attemptsUsed,
+      platform: "playnabet",
+      patternKey: pendingSignal?.patternKey || currentActiveSignal?.patternKey || "unknown",
+      color: color || pendingSignal?.expectedColor || currentActiveSignal?.color,
+      chance: pendingSignal?.chance || currentActiveSignal?.chance || 0,
+      createdAt: pendingSignal?.createdAt || currentActiveSignal?.createdAt || Date.now()
+    };
+    
+    fetch(`${API_BASE_URL}/api/signal/resolve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(signalData)
+    }).catch(e => console.error("Erro ao enviar resultado ao backend:", e));
+  } catch (e) {
+    console.error("Erro ao preparar dados do sinal:", e);
+  }
+  
   // Garantir que qualquer sinal pendente com esse id seja removido
   for (let p of pendingSignals) {
     if (p.id === signalUiId) {
@@ -778,7 +900,7 @@ function updatePendingStatusUI() {
   const p = pendingSignals[pendingSignals.length - 1];
   // currentAttempt é o próximo resultado a ser avaliado (avaliadoRounds começa em 0)
   const currentAttempt = (p.evaluatedRounds || 0) + 1;
-  const max = p.maxAttempts || 3;
+  const max = userMaxAttempts || 3;  // Usa configuração do usuário
   pendingStatusEl.style.display = "block";
   pendingStatusEl.textContent = `Tentativa ${currentAttempt}/${max}`;
 }

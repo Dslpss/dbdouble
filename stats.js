@@ -46,6 +46,7 @@ async function loadAllStats() {
   
   await Promise.all([
     loadOverview(filters),
+    loadAttemptStats(filters),
     loadChartByDay(filters),
     loadChartByHour(filters),
     loadChartByPattern(filters),
@@ -71,6 +72,25 @@ async function loadOverview(filters) {
     }
   } catch (e) {
     console.error("Erro ao carregar overview:", e);
+  }
+}
+
+async function loadAttemptStats(filters) {
+  try {
+    const resp = await fetch(`${API_BASE_URL}/api/stats/by-attempt?platform=${filters.platform}&days=${filters.days}`);
+    const data = await resp.json();
+    
+    if (data.ok && data.data) {
+      document.getElementById("firstAttempt").textContent = data.data.first_attempt || 0;
+      document.getElementById("secondAttempt").textContent = data.data.second_attempt || 0;
+      document.getElementById("thirdAttempt").textContent = data.data.third_attempt || 0;
+      
+      document.getElementById("firstPct").textContent = (data.percentages.first || 0) + "% dos wins";
+      document.getElementById("secondPct").textContent = (data.percentages.second || 0) + "% dos wins";
+      document.getElementById("thirdPct").textContent = (data.percentages.third || 0) + "% dos wins";
+    }
+  } catch (e) {
+    console.error("Erro ao carregar estatísticas por tentativa:", e);
   }
 }
 

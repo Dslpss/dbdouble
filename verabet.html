@@ -44,6 +44,9 @@
         <a href="/stats" class="platform-btn" style="padding: 10px 20px; background: linear-gradient(135deg, #ff9800, #ff5722); color: white; border-radius: 8px; text-decoration: none; font-weight: 600; transition: transform 0.2s;">
           📊 Estatísticas
         </a>
+        <button id="btnSettings" class="platform-btn" style="padding: 10px 20px; background: linear-gradient(135deg, #546e7a, #37474f); color: white; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: transform 0.2s;">
+          ⚙️ Configurações
+        </button>
       </nav>
 
       <!-- Estatísticas -->
@@ -274,6 +277,16 @@
               type="text"
               id="enabledPatterns"
               placeholder="ex: color_streak, alternation" />
+          </div>
+          <div class="form-group">
+            <label for="maxAttempts">Tentativas por sinal:</label>
+            <select id="maxAttempts" style="padding: 8px; border-radius: 6px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-color); width: 100%;">
+              <option value="3">3 tentativas (recomendado)</option>
+              <option value="2">2 tentativas (mais conservador)</option>
+            </select>
+            <small style="color: var(--text-secondary); font-size: 0.8rem;">
+              3 tentativas: ~85% win | 2 tentativas: ~72% win
+            </small>
           </div>
           <button type="submit" class="btn-primary">Salvar</button>
         </form>

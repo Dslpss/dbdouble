@@ -17,8 +17,8 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=Fals
 try:
     from zoneinfo import ZoneInfo
     BRAZIL_TZ = ZoneInfo("America/Sao_Paulo")
-except ImportError:
-    # Fallback para Python < 3.9
+except Exception:
+    # Fallback quando tzdata não está instalado ou ZoneInfo não funciona
     from datetime import timezone
     BRAZIL_TZ = timezone(timedelta(hours=-3))
 
@@ -167,6 +167,7 @@ async def me(current_user: dict = Depends(get_current_user)):
         "enabled_colors": current_user.get("enabled_colors", ["red", "black", "white"]),
         "enabled_patterns": current_user.get("enabled_patterns", []),
         "receive_alerts": current_user.get("receive_alerts", True),
+        "max_attempts": current_user.get("max_attempts", 3),  # 2 ou 3 tentativas
         "is_admin": current_user.get("is_admin", False)
     }
 
@@ -189,7 +190,7 @@ async def set_bankroll(payload: dict, current_user: dict = Depends(get_current_u
 
 @router.put("/preferences")
 async def update_preferences(payload: dict, current_user: dict = Depends(get_current_user)):
-    # payload expected: {"enabled_colors": ["red", "black"], "enabled_patterns": [], "receive_alerts": true}
+    # payload expected: {"enabled_colors": [...], "enabled_patterns": [], "receive_alerts": true, "max_attempts": 3}
     update_data = {}
     if "enabled_colors" in payload:
         update_data["enabled_colors"] = payload["enabled_colors"]
@@ -197,6 +198,11 @@ async def update_preferences(payload: dict, current_user: dict = Depends(get_cur
         update_data["enabled_patterns"] = payload["enabled_patterns"]
     if "receive_alerts" in payload:
         update_data["receive_alerts"] = payload["receive_alerts"]
+    if "max_attempts" in payload:
+        # Validar que seja 2 ou 3
+        max_att = int(payload["max_attempts"])
+        if max_att in [2, 3]:
+            update_data["max_attempts"] = max_att
     
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nenhuma preferência fornecida")
@@ -210,7 +216,8 @@ async def update_preferences(payload: dict, current_user: dict = Depends(get_cur
         return {
             "enabled_colors": result.get("enabled_colors", ["red", "black", "white"]),
             "enabled_patterns": result.get("enabled_patterns", []),
-            "receive_alerts": result.get("receive_alerts", True)
+            "receive_alerts": result.get("receive_alerts", True),
+            "max_attempts": result.get("max_attempts", 3)
         }
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Falha ao atualizar preferências")
 

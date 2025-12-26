@@ -268,7 +268,7 @@ async def save_signal_to_history(signal_data: Dict, result: str, attempts_used: 
         try:
             from zoneinfo import ZoneInfo
             brazil_tz = ZoneInfo("America/Sao_Paulo")
-        except ImportError:
+        except Exception:
             brazil_tz = timezone(timedelta(hours=-3))
         
         # Converter timestamp para datetime com fuso de Brasília
@@ -508,6 +508,43 @@ async def api_win_streaks():
         return {"ok": False, "error": str(e)}
 
 # ============================================================
+# ENDPOINT PARA SALVAR RESULTADO DE SINAL NO HISTÓRICO
+# ============================================================
+
+@app.post("/api/signal/resolve")
+async def api_signal_resolve(request: Request):
+    """Recebe o resultado de um sinal do frontend e salva no histórico"""
+    try:
+        data = await request.json()
+        
+        signal_id = data.get("id")
+        result = data.get("result")  # "win" ou "loss"
+        attempts_used = data.get("attemptsUsed", 1)
+        platform = data.get("platform", "playnabet")
+        pattern_key = data.get("patternKey", "unknown")
+        color = data.get("color")
+        chance = data.get("chance", 0)
+        created_at = data.get("createdAt", int(time.time() * 1000))
+        
+        if not result or result not in ["win", "loss"]:
+            return {"ok": False, "error": "result deve ser 'win' ou 'loss'"}
+        
+        signal_data = {
+            "id": signal_id,
+            "patternKey": pattern_key,
+            "color": color,
+            "chance": chance,
+            "createdAt": created_at
+        }
+        
+        await save_signal_to_history(signal_data, result, attempts_used, platform)
+        
+        return {"ok": True, "message": f"Sinal {signal_id} salvo como {result}"}
+    except Exception as e:
+        print(f"Erro ao resolver sinal: {e}")
+        return {"ok": False, "error": str(e)}
+
+# ============================================================
 # ENDPOINTS DE ESTATÍSTICAS AVANÇADAS
 # ============================================================
 
@@ -708,6 +745,61 @@ async def api_stats_pattern_tips(platform: str = "all", days: int = 7, min_signa
             },
             "days": days,
             "platform": platform
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.get("/api/stats/by-attempt")
+async def api_stats_by_attempt(platform: str = "all", days: int = 30):
+    """Retorna estatísticas de win/loss por número de tentativa (1ª, 2ª, 3ª)"""
+    try:
+        if db_module.db is None:
+            return {"ok": False, "error": "Database not connected"}
+        
+        from datetime import datetime, timedelta
+        cutoff = datetime.now() - timedelta(days=days)
+        cutoff_ts = int(cutoff.timestamp() * 1000)
+        
+        query = {"createdAt": {"$gte": cutoff_ts}, "result": "win"}
+        if platform != "all":
+            query["platform"] = platform
+        
+        # Buscar apenas wins (losses são sempre na última tentativa)
+        wins = await db_module.db.signal_history.find(query).to_list(length=10000)
+        
+        # Contar por tentativa
+        attempts = {1: 0, 2: 0, 3: 0}
+        for w in wins:
+            att = w.get("attemptsUsed", 1)
+            if att in attempts:
+                attempts[att] += 1
+        
+        total_wins = sum(attempts.values())
+        
+        # Total de sinais (incluindo losses)
+        total_query = {"createdAt": {"$gte": cutoff_ts}}
+        if platform != "all":
+            total_query["platform"] = platform
+        total_signals = await db_module.db.signal_history.count_documents(total_query)
+        total_losses = total_signals - total_wins
+        
+        return {
+            "ok": True,
+            "data": {
+                "first_attempt": attempts[1],
+                "second_attempt": attempts[2],
+                "third_attempt": attempts[3],
+                "total_wins": total_wins,
+                "total_losses": total_losses,
+                "total_signals": total_signals
+            },
+            "percentages": {
+                "first": round((attempts[1] / total_wins * 100), 1) if total_wins > 0 else 0,
+                "second": round((attempts[2] / total_wins * 100), 1) if total_wins > 0 else 0,
+                "third": round((attempts[3] / total_wins * 100), 1) if total_wins > 0 else 0
+            },
+            "platform": platform,
+            "days": days
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
