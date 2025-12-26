@@ -870,6 +870,9 @@ function updateHistoryWithOutcome(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(signalData)
+    }).then(() => {
+      // Atualizar cards de padrões após salvar resultado
+      setTimeout(() => loadPatternTips(), 1000);
     }).catch(e => console.error("Erro ao enviar resultado ao backend:", e));
   } catch (e) {
     console.error("Erro ao preparar dados do sinal:", e);
