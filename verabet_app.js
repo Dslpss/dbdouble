@@ -102,16 +102,40 @@ function registrar_resultado(acertou) {
   fetchUpdatedStats();
 }
 
-function updateWinStreakUI() {
+function updateWinStreakUI(streakHistory = []) {
   try {
     const currentEl = document.getElementById("currentWinStreak");
     const maxEl = document.getElementById("maxWinStreak");
     const lossCountEl = document.getElementById("consecutiveLosses");
     const lossTimeEl = document.getElementById("lastConsecutiveLossTime");
+    const lastWinStreakEl = document.getElementById("lastWinStreak");
+    const lastWinStreakHistoryEl = document.getElementById("lastWinStreakHistory");
+    
     if (currentEl) currentEl.textContent = String(currentWinStreak);
     if (maxEl) maxEl.textContent = String(maxWinStreak);
     if (lossCountEl) lossCountEl.textContent = String(consecutiveLossesCount);
     if (lossTimeEl) lossTimeEl.textContent = lastConsecutiveLossTime ? formatTimestamp(lastConsecutiveLossTime) : "-";
+    
+    // Mostrar última sequência de wins (última sequência finalizada)
+    if (lastWinStreakEl) {
+      if (streakHistory.length > 0) {
+        const lastStreak = streakHistory[streakHistory.length - 1];
+        lastWinStreakEl.textContent = `${lastStreak} wins`;
+      } else {
+        lastWinStreakEl.textContent = "-";
+      }
+    }
+    
+    // Mostrar mini-histórico das últimas 5 sequências
+    if (lastWinStreakHistoryEl) {
+      if (streakHistory.length > 0) {
+        const recentStreaks = streakHistory.slice(-5);
+        const historyStr = recentStreaks.join(" → ");
+        lastWinStreakHistoryEl.textContent = `Últimas: ${historyStr}`;
+      } else {
+        lastWinStreakHistoryEl.textContent = "Histórico: -";
+      }
+    }
   } catch (e) {}
 }
 
@@ -195,7 +219,8 @@ async function initializeApp() {
       maxWinStreak = wdata.maxStreak || 0;
       consecutiveLossesCount = wdata.consecutiveLossesCount || 0;
       lastConsecutiveLossTime = wdata.lastConsecutiveLossTime || null;
-      updateWinStreakUI();
+      const streakHistory = wdata.streakHistory || [];
+      updateWinStreakUI(streakHistory);
       
       const avgEl = document.getElementById("avgWinsBetweenLosses");
       if (avgEl) avgEl.textContent = (wdata.averageWinsBetweenLosses || 0).toFixed(2);
@@ -628,7 +653,8 @@ async function fetchUpdatedStats() {
       maxWinStreak = wdata.maxStreak || 0;
       consecutiveLossesCount = wdata.consecutiveLossesCount || 0;
       lastConsecutiveLossTime = wdata.lastConsecutiveLossTime || null;
-      updateWinStreakUI();
+      const streakHistory = wdata.streakHistory || [];
+      updateWinStreakUI(streakHistory);
       
       const avgEl = document.getElementById("avgWinsBetweenLosses");
       if (avgEl) avgEl.textContent = (wdata.averageWinsBetweenLosses || 0).toFixed(2);
