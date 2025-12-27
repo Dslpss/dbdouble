@@ -35,10 +35,10 @@
 
       <!-- Navegação entre plataformas -->
       <nav class="platform-nav" style="display: flex; gap: 10px; margin-bottom: 16px; justify-content: center; flex-wrap: wrap;">
-        <a href="/" class="platform-btn active" style="padding: 10px 20px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border-radius: 8px; text-decoration: none; font-weight: 600; transition: transform 0.2s;">
+        <a href="/playnabet" class="platform-btn active" style="padding: 10px 20px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border-radius: 8px; text-decoration: none; font-weight: 600; transition: transform 0.2s;">
           PlayNaBet
         </a>
-        <a href="/verabet" class="platform-btn" style="padding: 10px 20px; background: linear-gradient(135deg, #11998e, #38ef7d); color: white; border-radius: 8px; text-decoration: none; font-weight: 600; transition: transform 0.2s;">
+        <a href="/" class="platform-btn" style="padding: 10px 20px; background: linear-gradient(135deg, #11998e, #38ef7d); color: white; border-radius: 8px; text-decoration: none; font-weight: 600; transition: transform 0.2s;">
           VeraBet
         </a>
         <a href="/stats" class="platform-btn" style="padding: 10px 20px; background: linear-gradient(135deg, #ff9800, #ff5722); color: white; border-radius: 8px; text-decoration: none; font-weight: 600; transition: transform 0.2s;">
@@ -157,6 +157,23 @@
             rel="noopener noreferrer"
             >Abrir Playna Bets</a
           >
+        </div>
+      </section>
+
+      <!-- Cooldown Banner -->
+      <section id="cooldownBanner" class="cooldown-banner" style="display: none; margin-bottom: 16px;">
+        <div style="background: linear-gradient(135deg, #ff6b35, #f7931a); border-radius: 12px; padding: 16px 24px; text-align: center; box-shadow: 0 4px 20px rgba(255, 107, 53, 0.3);">
+          <div style="display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;">
+            <span style="font-size: 2rem;">☕</span>
+            <div>
+              <div style="font-size: 1.1rem; font-weight: 700; color: white;">AGUARDE UM MOMENTO</div>
+              <div style="font-size: 0.9rem; color: rgba(255,255,255,0.9);">Após a perda, o sistema faz uma pausa para encontrar melhores oportunidades</div>
+            </div>
+            <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 8px 16px; min-width: 80px;">
+              <div style="font-size: 1.5rem; font-weight: 700; color: white; font-family: monospace;" id="cooldownTimer">--:--</div>
+              <div style="font-size: 0.7rem; color: rgba(255,255,255,0.7);">para voltar</div>
+            </div>
+          </div>
         </div>
       </section>
 

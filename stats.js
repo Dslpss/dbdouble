@@ -16,6 +16,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Event listeners para filtros
   document.getElementById("platformFilter").addEventListener("change", loadAllStats);
   document.getElementById("periodFilter").addEventListener("change", loadAllStats);
+  document.getElementById("maxAttemptsFilter").addEventListener("change", loadAllStats);
   
   // Paginação
   document.getElementById("prevPage").addEventListener("click", () => {
@@ -36,7 +37,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 function getFilters() {
   return {
     platform: document.getElementById("platformFilter").value,
-    days: parseInt(document.getElementById("periodFilter").value)
+    days: parseInt(document.getElementById("periodFilter").value),
+    maxAttempts: parseInt(document.getElementById("maxAttemptsFilter").value)
   };
 }
 
@@ -56,7 +58,7 @@ async function loadAllStats() {
 
 async function loadOverview(filters) {
   try {
-    const resp = await fetch(`${API_BASE_URL}/api/stats/overview?platform=${filters.platform}&days=${filters.days}`);
+    const resp = await fetch(`${API_BASE_URL}/api/stats/overview?platform=${filters.platform}&days=${filters.days}&maxAttempts=${filters.maxAttempts}`);
     const data = await resp.json();
     
     if (data.ok) {
@@ -77,7 +79,7 @@ async function loadOverview(filters) {
 
 async function loadAttemptStats(filters) {
   try {
-    const resp = await fetch(`${API_BASE_URL}/api/stats/by-attempt?platform=${filters.platform}&days=${filters.days}`);
+    const resp = await fetch(`${API_BASE_URL}/api/stats/by-attempt?platform=${filters.platform}&days=${filters.days}&maxAttempts=${filters.maxAttempts}`);
     const data = await resp.json();
     
     if (data.ok && data.data) {
@@ -96,7 +98,7 @@ async function loadAttemptStats(filters) {
 
 async function loadChartByDay(filters) {
   try {
-    const resp = await fetch(`${API_BASE_URL}/api/stats/by-day?platform=${filters.platform}&days=${filters.days}`);
+    const resp = await fetch(`${API_BASE_URL}/api/stats/by-day?platform=${filters.platform}&days=${filters.days}&maxAttempts=${filters.maxAttempts}`);
     const data = await resp.json();
     
     if (data.ok && data.data) {
@@ -171,7 +173,7 @@ async function loadChartByDay(filters) {
 
 async function loadChartByHour(filters) {
   try {
-    const resp = await fetch(`${API_BASE_URL}/api/stats/by-hour?platform=${filters.platform}&days=${filters.days}`);
+    const resp = await fetch(`${API_BASE_URL}/api/stats/by-hour?platform=${filters.platform}&days=${filters.days}&maxAttempts=${filters.maxAttempts}`);
     const data = await resp.json();
     
     if (data.ok && data.data) {
@@ -238,7 +240,7 @@ async function loadChartByHour(filters) {
 
 async function loadChartByPattern(filters) {
   try {
-    const resp = await fetch(`${API_BASE_URL}/api/stats/by-pattern?platform=${filters.platform}&days=${filters.days}`);
+    const resp = await fetch(`${API_BASE_URL}/api/stats/by-pattern?platform=${filters.platform}&days=${filters.days}&maxAttempts=${filters.maxAttempts}`);
     const data = await resp.json();
     
     if (data.ok && data.data && data.data.length > 0) {
@@ -310,7 +312,7 @@ async function loadHistory() {
   paginationEl.style.display = "none";
   
   try {
-    const resp = await fetch(`${API_BASE_URL}/api/stats/signals-history?platform=${filters.platform}&days=${filters.days}&page=${currentPage}&limit=20`);
+    const resp = await fetch(`${API_BASE_URL}/api/stats/signals-history?platform=${filters.platform}&days=${filters.days}&page=${currentPage}&limit=20&maxAttempts=${filters.maxAttempts}`);
     const data = await resp.json();
     
     if (data.ok && data.data) {

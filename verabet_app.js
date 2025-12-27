@@ -207,6 +207,12 @@ async function initializeApp() {
     await loadPatternTips();
   } catch (e) {}
   
+  // Iniciar verificação de cooldown
+  try {
+    checkCooldownStatus();
+    setInterval(checkCooldownStatus, 5000); // Verificar a cada 5 segundos
+  } catch (e) {}
+  
   connectSSE();
   updateStats();
   renderResults();
@@ -426,6 +432,65 @@ async function logout() {
   } catch (e) {}
   localStorage.removeItem("token");
   window.location.href = "/auth";
+}
+
+// Verificar status do cooldown e atualizar banner
+async function checkCooldownStatus() {
+  try {
+    const resp = await fetch(`${API_BASE_URL}/api/cooldown_status?platform=verabet`);
+    const data = await resp.json();
+    
+    const banner = document.getElementById("cooldownBanner");
+    const timer = document.getElementById("cooldownTimer");
+    
+    if (!banner || !timer) return;
+    
+    if (data.ok && data.active) {
+      // Cooldown ativo - mostrar banner
+      banner.style.display = "block";
+      
+      const remainingSecs = data.remaining_secs;
+      const mins = Math.floor(remainingSecs / 60);
+      const secs = remainingSecs % 60;
+      timer.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+      
+      // Atualizar a cada segundo enquanto ativo
+      if (!window.cooldownInterval) {
+        window.cooldownInterval = setInterval(() => {
+          const currentText = timer.textContent;
+          const parts = currentText.split(':');
+          if (parts.length === 2) {
+            let m = parseInt(parts[0]) || 0;
+            let s = parseInt(parts[1]) || 0;
+            
+            if (s > 0) {
+              s--;
+            } else if (m > 0) {
+              m--;
+              s = 59;
+            } else {
+              // Tempo acabou
+              clearInterval(window.cooldownInterval);
+              window.cooldownInterval = null;
+              banner.style.display = "none";
+              return;
+            }
+            
+            timer.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+          }
+        }, 1000);
+      }
+    } else {
+      // Cooldown não ativo - esconder banner
+      banner.style.display = "none";
+      if (window.cooldownInterval) {
+        clearInterval(window.cooldownInterval);
+        window.cooldownInterval = null;
+      }
+    }
+  } catch (e) {
+    console.error("Erro ao verificar cooldown:", e);
+  }
 }
 
 // SSE Connection

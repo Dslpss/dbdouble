@@ -83,6 +83,10 @@ MIN_COOLDOWN_AFTER_WIN = 3
 GLOBAL_WINDOW_ROUNDS = 30
 GLOBAL_MAX_ALERTS = 4
 
+# Cooldown baseado em tempo após loss (em minutos)
+LOSS_COOLDOWN_MINUTES = 5
+loss_cooldown_until = 0  # Timestamp (ms) até quando o cooldown está ativo
+
 cooldown_contador = 0
 perdas_consecutivas = 0
 modo_stop = False
@@ -332,7 +336,7 @@ async def load_stats_from_db():
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    """Página principal da interface - requer autenticação"""
+    """Página principal - VeraBet Double - requer autenticação"""
     # Verificar se usuário está autenticado
     try:
         await get_current_user(request)
@@ -340,17 +344,17 @@ async def root(request: Request):
         # Não autenticado, redirecionar para auth
         return HTMLResponse(content="", status_code=302, headers={"Location": "/auth"})
 
-    # Usuário autenticado, servir HTML
+    # Usuário autenticado, servir VeraBet HTML (página principal)
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    html_path = os.path.join(base_dir, "index.html")
+    html_path = os.path.join(base_dir, "verabet.html")
     
-    print(f"🌐 Requisição para / - Tentando servir HTML de: {html_path}")
+    print(f"🌐 Requisição para / - Servindo VeraBet de: {html_path}")
     
     if os.path.exists(html_path):
         try:
             with open(html_path, "r", encoding="utf-8") as f:
                 html_content = f.read()
-            print("✅ HTML servido com sucesso!")
+            print("✅ VeraBet HTML servido com sucesso!")
             return HTMLResponse(content=html_content)
         except Exception as e:
             print(f"❌ Erro ao ler HTML: {e}")
@@ -487,6 +491,32 @@ async def api_signal_stats():
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+@app.get("/api/cooldown_status")
+async def api_cooldown_status(platform: str = "playnabet"):
+    """Retorna o status do cooldown após loss"""
+    try:
+        current_ts = int(time.time() * 1000)
+        
+        if platform == "verabet":
+            cooldown_until = verabet_loss_cooldown_until
+        else:
+            cooldown_until = loss_cooldown_until
+        
+        is_active = cooldown_until > 0 and current_ts < cooldown_until
+        remaining_ms = max(0, cooldown_until - current_ts) if is_active else 0
+        remaining_secs = int(remaining_ms / 1000)
+        
+        return {
+            "ok": True,
+            "active": is_active,
+            "remaining_ms": remaining_ms,
+            "remaining_secs": remaining_secs,
+            "cooldown_until": cooldown_until,
+            "cooldown_minutes": LOSS_COOLDOWN_MINUTES
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 @app.get("/api/win_streaks")
 async def api_win_streaks():
     """Retorna estatísticas de sequências de wins entre losses"""
@@ -549,7 +579,7 @@ async def api_signal_resolve(request: Request):
 # ============================================================
 
 @app.get("/api/stats/overview")
-async def api_stats_overview(platform: str = "all", days: int = 30):
+async def api_stats_overview(platform: str = "all", days: int = 30, maxAttempts: int = 3):
     """Retorna estatísticas gerais para o dashboard"""
     try:
         if db_module.db is None:
@@ -567,7 +597,15 @@ async def api_stats_overview(platform: str = "all", days: int = 30):
         signals = await db_module.db.signal_history.find(query).to_list(length=10000)
         
         total = len(signals)
-        wins = sum(1 for s in signals if s.get("result") == "win")
+        # Recalcular wins considerando maxAttempts
+        # Se um win foi obtido com mais tentativas do que maxAttempts, ele vira loss
+        wins = 0
+        for s in signals:
+            if s.get("result") == "win":
+                attempts_used = s.get("attemptsUsed", 1)
+                if attempts_used <= maxAttempts:
+                    wins += 1
+        
         losses = total - wins
         rate = round((wins / total * 100), 2) if total > 0 else 0
         
@@ -583,13 +621,14 @@ async def api_stats_overview(platform: str = "all", days: int = 30):
             "rate": rate,
             "roi": roi,
             "platform": platform,
-            "days": days
+            "days": days,
+            "maxAttempts": maxAttempts
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 @app.get("/api/stats/by-hour")
-async def api_stats_by_hour(platform: str = "all", days: int = 30):
+async def api_stats_by_hour(platform: str = "all", days: int = 30, maxAttempts: int = 3):
     """Retorna taxa de acerto por hora do dia"""
     try:
         if db_module.db is None:
@@ -613,8 +652,11 @@ async def api_stats_by_hour(platform: str = "all", days: int = 30):
         for s in signals:
             hour = s.get("hour", 0)
             by_hour[hour]["total"] += 1
+            # Considerar win apenas se attemptsUsed <= maxAttempts
             if s.get("result") == "win":
-                by_hour[hour]["wins"] += 1
+                attempts_used = s.get("attemptsUsed", 1)
+                if attempts_used <= maxAttempts:
+                    by_hour[hour]["wins"] += 1
         
         # Calcular taxas
         result = []
@@ -633,7 +675,7 @@ async def api_stats_by_hour(platform: str = "all", days: int = 30):
         return {"ok": False, "error": str(e)}
 
 @app.get("/api/stats/by-pattern")
-async def api_stats_by_pattern(platform: str = "all", days: int = 30):
+async def api_stats_by_pattern(platform: str = "all", days: int = 30, maxAttempts: int = 3):
     """Retorna taxa de acerto por padrão detectado"""
     try:
         if db_module.db is None:
@@ -656,8 +698,11 @@ async def api_stats_by_pattern(platform: str = "all", days: int = 30):
             if pattern not in by_pattern:
                 by_pattern[pattern] = {"total": 0, "wins": 0}
             by_pattern[pattern]["total"] += 1
+            # Considerar win apenas se attemptsUsed <= maxAttempts
             if s.get("result") == "win":
-                by_pattern[pattern]["wins"] += 1
+                attempts_used = s.get("attemptsUsed", 1)
+                if attempts_used <= maxAttempts:
+                    by_pattern[pattern]["wins"] += 1
         
         # Calcular taxas e ordenar por total
         result = []
@@ -750,7 +795,7 @@ async def api_stats_pattern_tips(platform: str = "all", days: int = 7, min_signa
         return {"ok": False, "error": str(e)}
 
 @app.get("/api/stats/by-attempt")
-async def api_stats_by_attempt(platform: str = "all", days: int = 30):
+async def api_stats_by_attempt(platform: str = "all", days: int = 30, maxAttempts: int = 3):
     """Retorna estatísticas de win/loss por número de tentativa (1ª, 2ª, 3ª)"""
     try:
         if db_module.db is None:
@@ -767,14 +812,14 @@ async def api_stats_by_attempt(platform: str = "all", days: int = 30):
         # Buscar apenas wins (losses são sempre na última tentativa)
         wins = await db_module.db.signal_history.find(query).to_list(length=10000)
         
-        # Contar por tentativa
+        # Contar por tentativa (apenas até maxAttempts)
         attempts = {1: 0, 2: 0, 3: 0}
         for w in wins:
             att = w.get("attemptsUsed", 1)
-            if att in attempts:
+            if att in attempts and att <= maxAttempts:
                 attempts[att] += 1
         
-        total_wins = sum(attempts.values())
+        total_wins = sum(attempts[i] for i in range(1, maxAttempts + 1))
         
         # Total de sinais (incluindo losses)
         total_query = {"createdAt": {"$gte": cutoff_ts}}
@@ -787,25 +832,26 @@ async def api_stats_by_attempt(platform: str = "all", days: int = 30):
             "ok": True,
             "data": {
                 "first_attempt": attempts[1],
-                "second_attempt": attempts[2],
-                "third_attempt": attempts[3],
+                "second_attempt": attempts[2] if maxAttempts >= 2 else 0,
+                "third_attempt": attempts[3] if maxAttempts >= 3 else 0,
                 "total_wins": total_wins,
                 "total_losses": total_losses,
                 "total_signals": total_signals
             },
             "percentages": {
                 "first": round((attempts[1] / total_wins * 100), 1) if total_wins > 0 else 0,
-                "second": round((attempts[2] / total_wins * 100), 1) if total_wins > 0 else 0,
-                "third": round((attempts[3] / total_wins * 100), 1) if total_wins > 0 else 0
+                "second": round((attempts[2] / total_wins * 100), 1) if total_wins > 0 and maxAttempts >= 2 else 0,
+                "third": round((attempts[3] / total_wins * 100), 1) if total_wins > 0 and maxAttempts >= 3 else 0
             },
             "platform": platform,
-            "days": days
+            "days": days,
+            "maxAttempts": maxAttempts
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 @app.get("/api/stats/by-day")
-async def api_stats_by_day(platform: str = "all", days: int = 30):
+async def api_stats_by_day(platform: str = "all", days: int = 30, maxAttempts: int = 3):
     """Retorna taxa de acerto por dia (para gráfico de linha)"""
     try:
         if db_module.db is None:
@@ -828,8 +874,11 @@ async def api_stats_by_day(platform: str = "all", days: int = 30):
             if date not in by_date:
                 by_date[date] = {"total": 0, "wins": 0}
             by_date[date]["total"] += 1
+            # Considerar win apenas se attemptsUsed <= maxAttempts
             if s.get("result") == "win":
-                by_date[date]["wins"] += 1
+                attempts_used = s.get("attemptsUsed", 1)
+                if attempts_used <= maxAttempts:
+                    by_date[date]["wins"] += 1
         
         # Calcular taxas e ordenar por data
         result = []
@@ -849,7 +898,7 @@ async def api_stats_by_day(platform: str = "all", days: int = 30):
         return {"ok": False, "error": str(e)}
 
 @app.get("/api/stats/signals-history")
-async def api_stats_signals_history(platform: str = "all", days: int = 30, page: int = 1, limit: int = 50):
+async def api_stats_signals_history(platform: str = "all", days: int = 30, page: int = 1, limit: int = 50, maxAttempts: int = 3):
     """Retorna histórico de sinais com paginação"""
     try:
         if db_module.db is None:
@@ -871,14 +920,23 @@ async def api_stats_signals_history(platform: str = "all", days: int = 30, page:
         signals = await db_module.db.signal_history.find(query).sort("createdAt", -1).skip(skip).limit(limit).to_list(length=limit)
         
         # Formatar para JSON (remover _id do MongoDB)
+        # Recalcular resultado baseado em maxAttempts
         formatted = []
         for s in signals:
+            original_result = s.get("result")
+            attempts_used = s.get("attemptsUsed", 1)
+            
+            # Se era win mas precisou de mais tentativas do que maxAttempts, vira loss
+            adjusted_result = original_result
+            if original_result == "win" and attempts_used > maxAttempts:
+                adjusted_result = "loss"
+            
             formatted.append({
                 "id": s.get("id"),
                 "platform": s.get("platform"),
                 "patternKey": s.get("patternKey"),
                 "color": s.get("color"),
-                "result": s.get("result"),
+                "result": adjusted_result,
                 "attemptsUsed": s.get("attemptsUsed"),
                 "createdAt": s.get("createdAt"),
                 "hour": s.get("hour"),
@@ -1244,6 +1302,12 @@ def on_message(data: Dict):
                                 asyncio.create_task(save_stats_to_db())
                             except Exception:
                                 pass
+                            # Ativar cooldown baseado em tempo após loss
+                            global loss_cooldown_until
+                            loss_cooldown_until = now_ts + (LOSS_COOLDOWN_MINUTES * 60 * 1000)
+                            cooldown_end_time = time.strftime('%H:%M:%S', time.localtime((now_ts + (LOSS_COOLDOWN_MINUTES * 60 * 1000)) / 1000))
+                            print(f"🚫 [COOLDOWN] Loss detectado! Pausando sinais por {LOSS_COOLDOWN_MINUTES} minutos até {cooldown_end_time}")
+                            
                             bet_payload = {"type": "bet_result", "data": pb}
                             bet_message = f"event: bet_result\ndata: {json.dumps(bet_payload)}\n\n"
                             for queue in event_clients:
@@ -1267,8 +1331,16 @@ def on_message(data: Dict):
         # Detectar sinal após adicionar resultado
         if len(results_history) >= 5:
             try:
+                # Verificar cooldown baseado em tempo após loss
+                current_ts = int(time.time() * 1000)
+                if loss_cooldown_until > 0 and current_ts < loss_cooldown_until:
+                    remaining_secs = int((loss_cooldown_until - current_ts) / 1000)
+                    remaining_mins = remaining_secs // 60
+                    remaining_secs = remaining_secs % 60
+                    print(f"⏳ [COOLDOWN] Sinal suprimido - cooldown ativo (restam {remaining_mins}m{remaining_secs}s)")
+                    signal = None
                 # Se bloqueio estiver ativado e existirem apostas pendentes, não detectar novos sinais
-                if CONFIG.BLOCK_SIGNALS_WHILE_PENDING and pending_bets:
+                elif CONFIG.BLOCK_SIGNALS_WHILE_PENDING and pending_bets:
                     # Debug: informar que sinal foi suprimido por pendente
                     print(f"[DBG] Sinal suprimido: existem {len(pending_bets)} pendentes e BLOCK_SIGNALS_WHILE_PENDING=True")
                     signal = None
@@ -1435,6 +1507,7 @@ verabet_max_win_streak = 0
 verabet_last_win_ts = None
 verabet_last_loss_ts = None
 verabet_signal_outcome_history = []  # Histórico de outcomes: [{'outcome': 'win'|'loss', 'ts': timestamp}]
+verabet_loss_cooldown_until = 0  # Timestamp (ms) até quando o cooldown está ativo para VeraBet
 
 # VeraBet pattern engine instance (motor dedicado para VeraBet)
 try:
@@ -1592,6 +1665,13 @@ def verabet_on_message(data: Dict):
                             pb['result'] = 'loss'
                             pb['resolvedAt'] = now_ts
                             verabet_registrar_resultado_sinal(pb.get('confLabel', 'media'), False)
+                            
+                            # Ativar cooldown baseado em tempo após loss para VeraBet
+                            global verabet_loss_cooldown_until
+                            verabet_loss_cooldown_until = now_ts + (LOSS_COOLDOWN_MINUTES * 60 * 1000)
+                            cooldown_end_time = time.strftime('%H:%M:%S', time.localtime((now_ts + (LOSS_COOLDOWN_MINUTES * 60 * 1000)) / 1000))
+                            print(f"🚫 [VeraBet COOLDOWN] Loss detectado! Pausando sinais por {LOSS_COOLDOWN_MINUTES} minutos até {cooldown_end_time}")
+                            
                             bet_payload = {"type": "bet_result", "data": pb}
                             bet_message = f"event: bet_result\ndata: {json.dumps(bet_payload)}\n\n"
                             for queue in verabet_event_clients:
@@ -1619,9 +1699,17 @@ def verabet_on_message(data: Dict):
         # Ainda bloqueamos se houver pendentes ou se acabou de resolver um sinal
         if len(verabet_results_history) >= 3 and verabet_pattern_engine:
             try:
+                # Verificar cooldown baseado em tempo após loss para VeraBet
+                current_ts = int(time.time() * 1000)
+                if verabet_loss_cooldown_until > 0 and current_ts < verabet_loss_cooldown_until:
+                    remaining_secs = int((verabet_loss_cooldown_until - current_ts) / 1000)
+                    remaining_mins = remaining_secs // 60
+                    remaining_secs = remaining_secs % 60
+                    print(f"⏳ [VeraBet COOLDOWN] Sinal suprimido - cooldown ativo (restam {remaining_mins}m{remaining_secs}s)")
+                    signal = None
                 # VeraBet SEMPRE bloqueia sinais enquanto houver pendente (independente de CONFIG)
                 # Também bloqueia se acabamos de resolver um sinal nesta rodada
-                if verabet_pending_bets or signal_just_resolved:
+                elif verabet_pending_bets or signal_just_resolved:
                     # Há sinal pendente ou acabamos de resolver, não detectar novo
                     if signal_just_resolved:
                         print(f"[VeraBet] Bloqueando novo sinal - acabou de resolver um")
@@ -1766,19 +1854,19 @@ def verabet_get_consecutive_losses():
     return count, last_sequence_ts
 
 # VeraBet Routes
-@app.get("/verabet", response_class=HTMLResponse)
-async def verabet_page(request: Request):
-    """Página VeraBet Double - requer autenticação"""
+@app.get("/playnabet", response_class=HTMLResponse)
+async def playnabet_page(request: Request):
+    """Página PlayNaBet Double - requer autenticação"""
     try:
         await get_current_user(request)
     except Exception:
         return HTMLResponse(content="", status_code=302, headers={"Location": "/auth"})
     
-    html_path = os.path.join(base_dir, "verabet.html")
+    html_path = os.path.join(base_dir, "index.html")
     if os.path.exists(html_path):
         with open(html_path, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
-    return HTMLResponse("<h1>VeraBet page not found</h1>", status_code=404)
+    return HTMLResponse("<h1>PlayNaBet page not found</h1>", status_code=404)
 
 @app.get("/verabet_app.js")
 async def verabet_app_js():
